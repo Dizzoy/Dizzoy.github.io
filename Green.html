@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chroma Key Full Screen</title>
+    <style>
+        /* Remove default browser spacing */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Prevents scrollbars */
+        }
+
+        /* The Chroma Key background */
+        .chroma-bg {
+            width: 100vw;
+            height: 100vh;
+            background-color: #00b140; /* Standard Green Screen Hex */
+            cursor: none; /* Hides the mouse for a clean look */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="chroma-bg" onclick="toggleFullScreen()"></div>
+
+    <script>
+        // Function to trigger actual browser full-screen mode on click
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
