@@ -1,394 +1,348 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Eco-Sweep: Cleanup Crew</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script async src="https://docs.opencv.org/4.5.4/opencv.js" type="text/javascript"></script>
-    <style>
-        body { background-color: #020617; overflow: hidden; color: white; font-family: 'Inter', sans-serif; }
-        #game-canvas { cursor: none; background: radial-gradient(circle at center, #1e293b 0%, #020617 100%); }
-        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
-        #video-preview { position: absolute; bottom: 20px; right: 20px; width: 200px; height: 150px; border-radius: 12px; overflow: hidden; border: 2px solid #334155; transform: scaleX(-1); }
-        .player-indicator { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
-        #mobile-controller-overlay { display: none; position: fixed; inset: 0; z-index: 100; background: #000; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
-        .pulse-emerald { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
-    </style>
-</head>
-<body>
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Trash2, Wind, Droplets, Leaf, Trophy, Users, Camera, QrCode } from 'lucide-react';
 
-    <!-- Mobile View (Displayed when URL has ?mode=remote) -->
-    <div id="mobile-controller-overlay">
-        <div id="color-selection-ui" class="w-full flex flex-col items-center">
-            <h2 class="text-2xl font-bold mb-4">Choose Your Net Color</h2>
-            <p class="mb-8 text-slate-400">Your phone screen will become your controller.</p>
-            <div class="grid grid-cols-2 gap-4 w-full max-w-xs">
-                <button onclick="setMobileColor('#ff0000', 'Red')" class="bg-red-600 h-24 rounded-xl font-bold">RED</button>
-                <button onclick="setMobileColor('#0000ff', 'Blue')" class="bg-blue-600 h-24 rounded-xl font-bold">BLUE</button>
-                <button onclick="setMobileColor('#00ff00', 'Green')" class="bg-green-600 h-24 rounded-xl font-bold">GREEN</button>
-                <button onclick="setMobileColor('#ffff00')" class="bg-yellow-400 h-24 rounded-xl text-black font-bold">YELLOW</button>
-            </div>
-        </div>
-        <div id="ready-ui" class="hidden w-full flex flex-col items-center">
-            <h2 class="text-3xl font-black mb-6">READY?</h2>
-            <button id="mobile-ready-btn" onclick="sendReady()" class="bg-white text-black px-12 py-6 rounded-full text-2xl font-bold uppercase tracking-widest shadow-xl">
-                I am Ready!
-            </button>
-            <p class="mt-8 text-sm opacity-70">Once you press ready, point this screen at the camera.</p>
-        </div>
-        <button onclick="location.reload()" class="mt-12 text-slate-500 underline text-sm">Exit Controller</button>
-    </div>
+// --- Constants & Config ---
+const COLORS = [
+  { name: 'Red', hex: '#ef4444', rgb: [239, 68, 68] },
+  { name: 'Green', hex: '#22c55e', rgb: [34, 197, 94] },
+  { name: 'Blue', hex: '#3b82f6', rgb: [59, 130, 246] },
+  { name: 'Yellow', hex: '#eab308', rgb: [234, 179, 8] },
+];
 
-    <!-- Main Game UI -->
-    <div id="ui-layer" class="absolute inset-0 z-10 pointer-events-none flex flex-col items-center p-8">
-        <div class="w-full flex justify-between items-start">
-            <div class="glass p-6 rounded-2xl">
-                <h1 class="text-4xl font-black text-emerald-400 tracking-tighter italic">ECO-SWEEP</h1>
-                <p class="text-sm text-slate-400">Cooperative Global Warming Awareness</p>
-            </div>
-            <div class="glass p-6 rounded-2xl text-right min-w-[200px]">
-                <div class="text-xs uppercase text-slate-500 font-bold tracking-widest mb-1">Total Debris Collected</div>
-                <div class="text-5xl font-mono font-bold text-white" id="score-val">0000</div>
-            </div>
-        </div>
+const TRASH_TYPES = [
+  { id: 'bottle', icon: <Trash2 size={32} />, points: 10, label: 'Plastic' },
+  { id: 'oil', icon: <Droplets size={40} />, points: 20, label: 'Oil Spill' },
+  { id: 'smog', icon: <Wind size={36} />, points: 15, label: 'Toxic Air' },
+];
 
-        <!-- Countdown Overlay -->
-        <div id="countdown-overlay" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 pointer-events-auto">
-            <div class="text-sm uppercase tracking-[0.5em] text-emerald-400 mb-4">Starting In</div>
-            <div id="countdown-number" class="text-[12rem] font-black leading-none">5</div>
-            <p class="text-slate-400 mt-4">Positions everyone!</p>
-        </div>
+const App = () => {
+  const [view, setView] = useState('landing'); // 'landing', 'game', 'controller'
+  const [selectedColor, setSelectedColor] = useState(null);
+  const [players, setPlayers] = useState({}); // { colorIndex: { x, y, active } }
+  const [gameState, setGameState] = useState({
+    score: 0,
+    pollutionLevel: 100, // 100 is dirty, 0 is clean
+    items: [],
+    gameActive: false,
+  });
 
-        <div id="start-screen" class="pointer-events-auto mt-12 flex flex-col items-center max-w-4xl">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-12 items-center bg-slate-900/50 p-10 rounded-3xl border border-slate-800">
-                <div class="text-left">
-                    <h2 class="text-4xl font-bold mb-4">Join the Crew</h2>
-                    <p class="text-slate-300 mb-6 leading-relaxed italic">Scan the QR, select a color, and tap "READY".</p>
-                    
-                    <div id="player-lobby" class="space-y-3">
-                        <div id="p0-ui" class="flex items-center glass px-4 py-3 rounded-xl opacity-20 border-l-4 border-red-500">
-                            <div class="player-indicator bg-red-500"></div> 
-                            <span class="flex-grow">Red Player</span>
-                            <span class="status-tag text-xs font-bold px-2 py-1 bg-slate-800 rounded">WAITING</span>
-                        </div>
-                        <div id="p1-ui" class="flex items-center glass px-4 py-3 rounded-xl opacity-20 border-l-4 border-blue-500">
-                            <div class="player-indicator bg-blue-500"></div> 
-                            <span class="flex-grow">Blue Player</span>
-                            <span class="status-tag text-xs font-bold px-2 py-1 bg-slate-800 rounded">WAITING</span>
-                        </div>
-                        <div id="p2-ui" class="flex items-center glass px-4 py-3 rounded-xl opacity-20 border-l-4 border-green-500">
-                            <div class="player-indicator bg-green-500"></div> 
-                            <span class="flex-grow">Green Player</span>
-                            <span class="status-tag text-xs font-bold px-2 py-1 bg-slate-800 rounded">WAITING</span>
-                        </div>
-                        <div id="p3-ui" class="flex items-center glass px-4 py-3 rounded-xl opacity-20 border-l-4 border-yellow-500">
-                            <div class="player-indicator bg-yellow-500"></div> 
-                            <span class="flex-grow">Yellow Player</span>
-                            <span class="status-tag text-xs font-bold px-2 py-1 bg-slate-800 rounded">WAITING</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="flex flex-col items-center bg-white p-6 rounded-2xl">
-                    <div id="qrcode"></div>
-                    <p class="text-black text-sm font-bold mt-4">SCAN TO CONNECT PHONE</p>
-                </div>
-            </div>
-            
-            <div id="lobby-footer" class="mt-8 flex flex-col items-center">
-                <p id="cv-loading" class="text-orange-400 animate-pulse font-bold mb-4">Initializing Computer Vision...</p>
-                <div id="ready-status-text" class="text-slate-400 uppercase tracking-widest text-sm">Waiting for players to get ready...</div>
-            </div>
-        </div>
-    </div>
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const requestRef = useRef();
 
-    <canvas id="game-canvas" class="absolute inset-0"></canvas>
-    <div id="video-preview"><canvas id="cv-debug-canvas" class="w-full h-full"></canvas></div>
-    <video id="webcam" playsinline style="display:none"></video>
+  // --- Controller Logic ---
+  const handleJoinAsController = (color) => {
+    setSelectedColor(color);
+    setView('controller');
+  };
 
-    <script>
-        // 1. MOBILE CONTROLLER LOGIC
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('mode') === 'remote') {
-            document.getElementById('mobile-controller-overlay').style.display = 'flex';
-            document.getElementById('ui-layer').style.display = 'none';
+  // --- Computer Vision Tracking (Main Screen) ---
+  const startTracking = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+        requestRef.current = requestAnimationFrame(processVideo);
+      }
+    } catch (err) {
+      console.error("Camera access denied", err);
+    }
+  };
+
+  const processVideo = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
+    
+    // Draw video to hidden canvas
+    ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+    const frame = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
+    const data = frame.data;
+
+    const newPlayerPositions = { ...players };
+
+    // Simple Color Tracking (finding centroids of target colors)
+    COLORS.forEach((color, idx) => {
+      let sumX = 0;
+      let sumY = 0;
+      let count = 0;
+
+      for (let i = 0; i < data.length; i += 16) { // Sample pixels for performance
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        // Check if pixel matches the target color range (basic Euclidean distance)
+        const distance = Math.sqrt(
+          Math.pow(r - color.rgb[0], 2) +
+          Math.pow(g - color.rgb[1], 2) +
+          Math.pow(b - color.rgb[2], 2)
+        );
+
+        if (distance < 80) { // Sensitivity threshold
+          const x = (i / 4) % canvasRef.current.width;
+          const y = Math.floor((i / 4) / canvasRef.current.width);
+          sumX += x;
+          sumY += y;
+          count++;
         }
+      }
 
-        function setMobileColor(hex) {
-            document.getElementById('mobile-controller-overlay').style.background = hex;
-            document.getElementById('color-selection-ui').classList.add('hidden');
-            document.getElementById('ready-ui').classList.remove('hidden');
-            if (navigator.wakeLock) navigator.wakeLock.request('screen');
-        }
-
-        function sendReady() {
-            // In this single-file local setup, we simulate the "Ready" intent.
-            // When players are detected by CV, we treat them as ready if they've passed the color selection.
-            document.getElementById('ready-ui').innerHTML = "<h2 class='text-4xl font-black text-white italic animate-bounce'>READY!</h2><p class='mt-4'>Point screen at camera</p>";
-        }
-
-        // 2. MAIN GAME CONFIG
-        const CONFIG = {
-            colors: [
-                { id: 0, name: 'Red', hex: '#ef4444', hsv: { low: [0, 150, 100], high: [10, 255, 255] } },
-                { id: 1, name: 'Blue', hex: '#3b82f6', hsv: { low: [100, 150, 50], high: [130, 255, 255] } },
-                { id: 2, name: 'Green', hex: '#22c55e', hsv: { low: [40, 100, 50], high: [80, 255, 255] } },
-                { id: 3, name: 'Yellow', hex: '#eab308', hsv: { low: [20, 150, 100], high: [35, 255, 255] } }
-            ],
-            trash: [
-                { emoji: '🧴', score: 10 },
-                { emoji: '🛍️', score: 15 },
-                { emoji: '🛞', score: 25 },
-                { emoji: '🥫', score: 5 },
-                { emoji: '☢️', score: -50 }
-            ]
+      if (count > 20) { // Minimum cluster size to recognize a player
+        // Smooth positioning (Lerp)
+        const targetX = (sumX / count) / canvasRef.current.width * 100;
+        const targetY = (sumY / count) / canvasRef.current.height * 100;
+        
+        newPlayerPositions[idx] = {
+          x: targetX,
+          y: targetY,
+          active: true
         };
+      }
+    });
 
-        let gameState = 'LOBBY'; // LOBBY, COUNTDOWN, PLAYING
-        let score = 0;
-        let players = CONFIG.colors.map(c => ({ ...c, x: 0, y: 0, active: false, trail: [] }));
-        let debris = [];
-        let particles = [];
-        let cvReady = false;
-        let countdownTimer = null;
-        let countdownVal = 5;
-        let video, cap, src, hsv, mask;
+    setPlayers(newPlayerPositions);
+    requestRef.current = requestAnimationFrame(processVideo);
+  };
 
-        const canvas = document.getElementById('game-canvas');
-        const ctx = canvas.getContext('2d');
-        const debugCanvas = document.getElementById('cv-debug-canvas');
-        const debugCtx = debugCanvas.getContext('2d');
+  // --- Game Loop ---
+  useEffect(() => {
+    if (!gameState.gameActive) return;
 
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resize);
-        resize();
+    const interval = setInterval(() => {
+      setGameState(prev => {
+        // Move items down
+        const movedItems = prev.items.map(item => ({ ...item, y: item.y + item.speed }))
+          .filter(item => item.y < 110); // Remove items off screen
 
-        class Debris {
-            constructor() {
-                this.type = CONFIG.trash[Math.floor(Math.random() * CONFIG.trash.length)];
-                this.x = Math.random() * (canvas.width * 0.6) + (canvas.width * 0.2);
-                this.y = canvas.height + 50;
-                this.vx = (canvas.width/2 - this.x) * 0.015 + (Math.random() - 0.5) * 5;
-                this.vy = -Math.random() * 8 - 14; 
-                this.gravity = 0.22;
-                this.rotation = (Math.random() - 0.5) * 0.1;
-                this.angle = 0;
-                this.size = 60;
-                this.dead = false;
-            }
-            update() {
-                this.vy += this.gravity;
-                this.x += this.vx;
-                this.y += this.vy;
-                this.angle += this.rotation;
-                return (this.y < canvas.height + 100);
-            }
-            draw() {
-                ctx.save();
-                ctx.translate(this.x, this.y);
-                ctx.rotate(this.angle);
-                ctx.font = `${this.size}px Arial`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(this.type.emoji, 0, 0);
-                ctx.restore();
-            }
+        // Spawn new items
+        if (Math.random() > 0.92 && movedItems.length < 10) {
+          const type = TRASH_TYPES[Math.floor(Math.random() * TRASH_TYPES.length)];
+          movedItems.push({
+            id: Math.random(),
+            x: Math.random() * 90 + 5,
+            y: -10,
+            speed: 0.5 + Math.random() * 1.5,
+            ...type
+          });
         }
 
-        async function startCamera() {
-            video = document.getElementById('webcam');
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-            video.srcObject = stream;
-            video.play();
-            return new Promise(r => video.onloadedmetadata = r);
-        }
+        // Collision detection
+        let caughtPoints = 0;
+        const remainingItems = movedItems.filter(item => {
+          let caught = false;
+          Object.values(players).forEach(player => {
+            const dist = Math.sqrt(Math.pow(player.x - item.x, 2) + Math.pow(player.y - item.y, 2));
+            if (dist < 8) caught = true;
+          });
+          if (caught) caughtPoints += item.points;
+          return !caught;
+        });
 
-        function processCV() {
-            if (!cvReady) return;
-            cap.read(src);
-            cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
-            cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+        const newScore = prev.score + caughtPoints;
+        const newPollution = Math.max(0, 100 - (newScore / 20));
 
-            let activeCount = 0;
-
-            players.forEach((p, i) => {
-                let low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), p.hsv.low.concat([0]));
-                let high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), p.hsv.high.concat([255]));
-                
-                cv.inRange(hsv, low, high, mask);
-                let contours = new cv.MatVector();
-                let hierarchy = new cv.Mat();
-                cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-                let maxArea = 0;
-                let bestIdx = -1;
-                for (let j = 0; j < contours.size(); ++j) {
-                    let area = cv.contourArea(contours.get(j));
-                    if (area > 500 && area > maxArea) {
-                        maxArea = area;
-                        bestIdx = j;
-                    }
-                }
-
-                const uiEl = document.getElementById(`p${i}-ui`);
-                const statusTag = uiEl.querySelector('.status-tag');
-
-                if (bestIdx !== -1) {
-                    let m = cv.moments(contours.get(bestIdx));
-                    p.x = canvas.width - (m.m10 / m.m00 / video.videoWidth * canvas.width);
-                    p.y = (m.m01 / m.m00 / video.videoHeight * canvas.height);
-                    p.active = true;
-                    activeCount++;
-                    
-                    p.trail.push({x: p.x, y: p.y});
-                    if(p.trail.length > 10) p.trail.shift();
-
-                    uiEl.style.opacity = "1";
-                    statusTag.innerText = "READY";
-                    statusTag.className = "status-tag text-xs font-bold px-2 py-1 bg-emerald-500 text-white rounded pulse-emerald";
-                } else {
-                    p.active = false;
-                    p.trail = [];
-                    uiEl.style.opacity = "0.2";
-                    statusTag.innerText = "WAITING";
-                    statusTag.className = "status-tag text-xs font-bold px-2 py-1 bg-slate-800 rounded";
-                }
-
-                contours.delete(); hierarchy.delete(); low.delete(); high.delete();
-            });
-
-            // Handle Countdown trigger
-            if (gameState === 'LOBBY' && activeCount > 0) {
-                startCountdown();
-            } else if (gameState === 'COUNTDOWN' && activeCount === 0) {
-                cancelCountdown();
-            }
-
-            debugCtx.save();
-            debugCtx.scale(-1, 1);
-            debugCtx.drawImage(video, -debugCanvas.width, 0, debugCanvas.width, debugCanvas.height);
-            debugCtx.restore();
-        }
-
-        function startCountdown() {
-            if (countdownTimer) return;
-            gameState = 'COUNTDOWN';
-            countdownVal = 5;
-            document.getElementById('countdown-overlay').classList.remove('hidden');
-            document.getElementById('countdown-number').innerText = countdownVal;
-            
-            countdownTimer = setInterval(() => {
-                countdownVal--;
-                if (countdownVal <= 0) {
-                    clearInterval(countdownTimer);
-                    beginGame();
-                } else {
-                    document.getElementById('countdown-number').innerText = countdownVal;
-                }
-            }, 1000);
-        }
-
-        function cancelCountdown() {
-            if (!countdownTimer) return;
-            clearInterval(countdownTimer);
-            countdownTimer = null;
-            gameState = 'LOBBY';
-            document.getElementById('countdown-overlay').classList.add('hidden');
-        }
-
-        function beginGame() {
-            gameState = 'PLAYING';
-            document.getElementById('countdown-overlay').classList.add('hidden');
-            document.getElementById('start-screen').style.display = 'none';
-        }
-
-        function loop() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            processCV();
-
-            if (gameState === 'PLAYING') {
-                if (Math.random() < 0.04) debris.push(new Debris());
-
-                debris = debris.filter(d => {
-                    const alive = d.update();
-                    d.draw();
-                    players.forEach(p => {
-                        if (p.active && Math.hypot(p.x - d.x, p.y - d.y) < 65) {
-                            score += d.type.score;
-                            document.getElementById('score-val').innerText = Math.max(0, score).toString().padStart(4, '0');
-                            d.dead = true;
-                            for(let i=0; i<12; i++) particles.push({
-                                x: d.x, y: d.y, 
-                                vx: (Math.random()-0.5)*12, vy: (Math.random()-0.5)*12, 
-                                life: 1, c: p.hex
-                            });
-                        }
-                    });
-                    return alive && !d.dead;
-                });
-            }
-
-            particles = particles.filter(p => {
-                p.x += p.vx; p.y += p.vy; p.life -= 0.025;
-                ctx.fillStyle = p.c;
-                ctx.globalAlpha = p.life;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
-                ctx.fill();
-                ctx.globalAlpha = 1;
-                return p.life > 0;
-            });
-
-            players.forEach(p => {
-                if(p.active && p.trail.length > 1) {
-                    ctx.beginPath();
-                    ctx.strokeStyle = p.hex;
-                    ctx.lineWidth = 12;
-                    ctx.lineCap = 'round';
-                    ctx.shadowBlur = 25;
-                    ctx.shadowColor = p.hex;
-                    ctx.moveTo(p.trail[0].x, p.trail[0].y);
-                    for(let i=1; i<p.trail.length; i++) ctx.lineTo(p.trail[i].x, p.trail[i].y);
-                    ctx.stroke();
-                    ctx.shadowBlur = 0;
-                    ctx.fillStyle = "white";
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, 12, 0, Math.PI*2);
-                    ctx.fill();
-                }
-            });
-
-            requestAnimationFrame(loop);
-        }
-
-        window.onload = async () => {
-            const qrUrl = window.location.href + (window.location.search ? '&' : '?') + 'mode=remote';
-            new QRCode(document.getElementById("qrcode"), { text: qrUrl, width: 180, height: 180 });
-
-            await startCamera();
-            debugCanvas.width = 640;
-            debugCanvas.height = 480;
-
-            const checkCV = setInterval(() => {
-                if (typeof cv !== 'undefined' && cv.Mat) {
-                    clearInterval(checkCV);
-                    src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
-                    hsv = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC3);
-                    mask = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC1);
-                    cap = new cv.VideoCapture(video);
-                    cvReady = true;
-                    document.getElementById('cv-loading').innerText = "CV Online - Ready for Players";
-                    document.getElementById('cv-loading').className = "text-emerald-400 font-bold mb-4";
-                }
-            }, 500);
-
-            loop();
+        return {
+          ...prev,
+          items: remainingItems,
+          score: newScore,
+          pollutionLevel: newPollution
         };
-    </script>
-</body>
-</html>
+      });
+    }, 30);
+
+    return () => clearInterval(interval);
+  }, [gameState.gameActive, players]);
+
+  // --- Views ---
+
+  if (view === 'controller') {
+    return (
+      <div 
+        className="fixed inset-0 flex flex-col items-center justify-center text-white text-center p-6 transition-colors duration-500"
+        style={{ backgroundColor: selectedColor.hex }}
+      >
+        <h1 className="text-4xl font-bold mb-4 drop-shadow-lg">YOU ARE {selectedColor.name.toUpperCase()}</h1>
+        <p className="text-xl opacity-90">Hold your phone screen towards the main camera to control your net!</p>
+        <div className="mt-12 animate-pulse">
+          <div className="w-24 h-24 border-8 border-white/50 rounded-full mx-auto" />
+        </div>
+        <button 
+          onClick={() => setView('landing')}
+          className="mt-20 px-6 py-2 bg-black/20 rounded-full text-sm"
+        >
+          Change Color
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-white font-sans overflow-hidden">
+      {/* Background Visual Reflection of Progress */}
+      <div 
+        className="fixed inset-0 transition-opacity duration-1000 pointer-events-none"
+        style={{ 
+          background: `linear-gradient(to bottom, #1e293b, ${gameState.pollutionLevel > 50 ? '#444' : '#10b981'})`,
+          opacity: 1
+        }}
+      />
+      
+      {/* Dirty Overlay (Clouds/Smog) */}
+      <div 
+        className="fixed inset-0 pointer-events-none z-0 transition-opacity duration-1000"
+        style={{ 
+          opacity: gameState.pollutionLevel / 100,
+          background: 'radial-gradient(circle, transparent 20%, #222 100%)',
+          filter: 'contrast(150%) brightness(50%)'
+        }}
+      />
+
+      {view === 'landing' ? (
+        <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8 text-center">
+          <Leaf className="text-emerald-400 mb-4 animate-bounce" size={64} />
+          <h1 className="text-6xl font-black tracking-tighter mb-4">ECO CLEANUP</h1>
+          <p className="text-xl text-slate-300 max-w-2xl mb-12">
+            A cooperative mission to save our oceans. Scan the QR code to join with your phone, 
+            pick a color, and use your device as a physical controller!
+          </p>
+
+          <div className="grid md:grid-cols-2 gap-12 items-center bg-white/5 p-12 rounded-3xl backdrop-blur-xl border border-white/10">
+            <div className="flex flex-col items-center">
+              <div className="bg-white p-4 rounded-xl mb-4">
+                <QrCode size={180} className="text-slate-900" />
+              </div>
+              <p className="text-sm font-mono text-emerald-400 uppercase tracking-widest">Scan to Play</p>
+            </div>
+
+            <div className="text-left space-y-6">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                <Users /> Active Controllers
+              </h2>
+              <div className="flex gap-4">
+                {COLORS.map((c, i) => (
+                  <button 
+                    key={c.name}
+                    onClick={() => handleJoinAsController(c)}
+                    className="w-12 h-12 rounded-full border-4 border-white/20 transition-transform hover:scale-110"
+                    style={{ backgroundColor: c.hex }}
+                    title={`Join as ${c.name}`}
+                  />
+                ))}
+              </div>
+              <button 
+                onClick={() => { setView('game'); startTracking(); setGameState(prev => ({...prev, gameActive: true})); }}
+                className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl font-bold text-xl transition-all"
+              >
+                START MISSION
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="relative z-10 w-full h-screen">
+          {/* Game UI Header */}
+          <div className="absolute top-0 left-0 w-full p-8 flex justify-between items-start pointer-events-none">
+            <div className="space-y-2">
+              <div className="flex items-center gap-4 bg-black/40 backdrop-blur-md p-4 rounded-2xl border border-white/10">
+                <Trophy className="text-yellow-400" />
+                <div className="text-3xl font-black">{gameState.score}</div>
+              </div>
+              <div className="text-xs uppercase tracking-widest text-slate-400 font-bold ml-1">Cleanup Score</div>
+            </div>
+
+            <div className="flex flex-col items-end">
+              <div className="w-64 h-4 bg-slate-800 rounded-full overflow-hidden border border-white/10">
+                <div 
+                  className="h-full bg-emerald-500 transition-all duration-500"
+                  style={{ width: `${100 - gameState.pollutionLevel}%` }}
+                />
+              </div>
+              <div className="text-xs font-bold mt-2 text-emerald-400 uppercase tracking-tighter">Environment Restoration</div>
+            </div>
+          </div>
+
+          {/* Hidden components for CV */}
+          <video ref={videoRef} className="hidden" width="640" height="480" />
+          <canvas ref={canvasRef} className="hidden" width="640" height="480" />
+
+          {/* Falling Trash */}
+          {gameState.items.map(item => (
+            <div 
+              key={item.id}
+              className="absolute transition-all duration-75 text-white filter drop-shadow-lg"
+              style={{ 
+                left: `${item.x}%`, 
+                top: `${item.y}%`,
+                transform: 'translate(-50%, -50%) rotate(15deg)'
+              }}
+            >
+              <div className="p-3 bg-white/10 rounded-full backdrop-blur-sm border border-white/20 animate-pulse">
+                {item.icon}
+              </div>
+            </div>
+          ))}
+
+          {/* Player Nets (Cursors) */}
+          {Object.entries(players).map(([idx, player]) => (
+            <div 
+              key={idx}
+              className="absolute transition-all duration-100 ease-out z-50 pointer-events-none"
+              style={{ 
+                left: `${player.x}%`, 
+                top: `${player.y}%`,
+                transform: 'translate(-50%, -50%)'
+              }}
+            >
+              <div className="relative">
+                {/* Visual Net */}
+                <div 
+                  className="w-24 h-24 rounded-full border-4 flex items-center justify-center bg-white/10 animate-pulse"
+                  style={{ borderColor: COLORS[idx].hex, boxShadow: `0 0 40px ${COLORS[idx].hex}44` }}
+                >
+                  <div className="w-16 h-16 opacity-30 rounded-full" style={{ border: `1px solid ${COLORS[idx].hex}` }} />
+                </div>
+                {/* Player Label */}
+                <div 
+                  className="absolute -top-8 left-1/2 -translate-x-1/2 text-[10px] font-bold px-2 py-1 rounded bg-black/50 whitespace-nowrap"
+                  style={{ color: COLORS[idx].hex }}
+                >
+                  PLAYER {Number(idx) + 1}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* Success State Overlay */}
+          {gameState.pollutionLevel <= 0 && (
+            <div className="absolute inset-0 bg-emerald-500/20 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-1000">
+              <h2 className="text-8xl font-black mb-4">EARTH SAVED!</h2>
+              <p className="text-2xl opacity-80">Final Score: {gameState.score}</p>
+              <button 
+                onClick={() => window.location.reload()}
+                className="mt-8 px-8 py-4 bg-white text-emerald-600 rounded-full font-bold"
+              >
+                CLEAN AGAIN?
+              </button>
+            </div>
+          )}
+          
+          {/* Debug Camera View (Optional for setup) */}
+          <div className="absolute bottom-4 left-4 w-32 h-24 border border-white/20 rounded-lg overflow-hidden bg-black opacity-50 hover:opacity-100 transition-opacity">
+            <video 
+              autoPlay 
+              muted 
+              className="w-full h-full object-cover grayscale brightness-150"
+              ref={el => { if(el && videoRef.current) el.srcObject = videoRef.current.srcObject; }} 
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Camera size={16} className="text-white/50" />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default App;
