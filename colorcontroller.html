@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Eco-Net Controller</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body, html { height: 100%; margin: 0; overflow: hidden; font-family: sans-serif; }
+        .full-screen-color {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100;
+        }
+        .color-btn { height: 120px; border-radius: 1rem; transition: transform 0.2s; }
+        .color-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="bg-slate-900 text-white flex flex-col items-center justify-center p-6">
+
+    <div id="selection-screen" class="w-full max-w-md text-center">
+        <h1 class="text-3xl font-bold mb-2">JOIN CLEANUP</h1>
+        <p class="mb-8 opacity-70">Pick your net color and point your phone screen at the webcam.</p>
+        
+        <div class="grid grid-cols-2 gap-4">
+            <button onclick="selectColor('#ef4444', 'RED')" class="color-btn bg-red-500 font-bold text-2xl">RED</button>
+            <button onclick="selectColor('#22c55e', 'GREEN')" class="color-btn bg-green-500 font-bold text-2xl">GREEN</button>
+            <button onclick="selectColor('#3b82f6', 'BLUE')" class="color-btn bg-blue-500 font-bold text-2xl">BLUE</button>
+            <button onclick="selectColor('#eab308', 'YELLOW')" class="color-btn bg-yellow-500 font-bold text-2xl">YELLOW</button>
+        </div>
+        
+        <p class="mt-8 text-xs opacity-50">Tip: Turn your brightness to maximum for best tracking.</p>
+    </div>
+
+    <div id="color-screen" class="full-screen-color">
+        <button onclick="reset()" class="absolute top-4 right-4 bg-black/30 p-2 rounded text-xs">CHANGE COLOR</button>
+        <div class="bg-black/40 px-6 py-4 rounded-xl text-center backdrop-blur-md">
+            <p class="text-xl font-bold tracking-widest" id="color-label"></p>
+            <p class="text-sm">POINT SCREEN AT CAMERA</p>
+        </div>
+    </div>
+
+<script>
+    const selection = document.getElementById('selection-screen');
+    const colorScreen = document.getElementById('color-screen');
+    const label = document.getElementById('color-label');
+
+    function selectColor(hex, name) {
+        selection.style.display = 'none';
+        colorScreen.style.display = 'flex';
+        colorScreen.style.backgroundColor = hex;
+        label.innerText = name;
+        
+        // Request wake lock if supported to keep screen on
+        if ('wakeLock' in navigator) {
+            navigator.wakeLock.request('screen').catch(() => {});
+        }
+        
+        // Visual cue for the player to maximize brightness
+        setTimeout(() => {
+            if(confirm("For best results, please set your screen brightness to maximum!")) {}
+        }, 500);
+    }
+
+    function reset() {
+        selection.style.display = 'block';
+        colorScreen.style.display = 'none';
+    }
+</script>
+</body>
+</html>
