@@ -14,19 +14,30 @@
         #video-preview { position: absolute; bottom: 20px; right: 20px; width: 200px; height: 150px; border-radius: 12px; overflow: hidden; border: 2px solid #334155; transform: scaleX(-1); }
         .player-indicator { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
         #mobile-controller-overlay { display: none; position: fixed; inset: 0; z-index: 100; background: #000; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+        .pulse-emerald { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
     </style>
 </head>
 <body>
 
     <!-- Mobile View (Displayed when URL has ?mode=remote) -->
     <div id="mobile-controller-overlay">
-        <h2 class="text-2xl font-bold mb-4">Choose Your Net Color</h2>
-        <p class="mb-8 text-slate-400">Your phone screen will become your controller. Point it at the computer camera!</p>
-        <div class="grid grid-cols-2 gap-4 w-full max-w-xs">
-            <button onclick="setMobileColor('#ff0000')" class="bg-red-600 h-24 rounded-xl font-bold">RED</button>
-            <button onclick="setMobileColor('#0000ff')" class="bg-blue-600 h-24 rounded-xl font-bold">BLUE</button>
-            <button onclick="setMobileColor('#00ff00')" class="bg-green-600 h-24 rounded-xl font-bold">GREEN</button>
-            <button onclick="setMobileColor('#ffff00')" class="bg-yellow-400 h-24 rounded-xl text-black font-bold">YELLOW</button>
+        <div id="color-selection-ui" class="w-full flex flex-col items-center">
+            <h2 class="text-2xl font-bold mb-4">Choose Your Net Color</h2>
+            <p class="mb-8 text-slate-400">Your phone screen will become your controller.</p>
+            <div class="grid grid-cols-2 gap-4 w-full max-w-xs">
+                <button onclick="setMobileColor('#ff0000', 'Red')" class="bg-red-600 h-24 rounded-xl font-bold">RED</button>
+                <button onclick="setMobileColor('#0000ff', 'Blue')" class="bg-blue-600 h-24 rounded-xl font-bold">BLUE</button>
+                <button onclick="setMobileColor('#00ff00', 'Green')" class="bg-green-600 h-24 rounded-xl font-bold">GREEN</button>
+                <button onclick="setMobileColor('#ffff00')" class="bg-yellow-400 h-24 rounded-xl text-black font-bold">YELLOW</button>
+            </div>
+        </div>
+        <div id="ready-ui" class="hidden w-full flex flex-col items-center">
+            <h2 class="text-3xl font-black mb-6">READY?</h2>
+            <button id="mobile-ready-btn" onclick="sendReady()" class="bg-white text-black px-12 py-6 rounded-full text-2xl font-bold uppercase tracking-widest shadow-xl">
+                I am Ready!
+            </button>
+            <p class="mt-8 text-sm opacity-70">Once you press ready, point this screen at the camera.</p>
         </div>
         <button onclick="location.reload()" class="mt-12 text-slate-500 underline text-sm">Exit Controller</button>
     </div>
@@ -44,17 +55,40 @@
             </div>
         </div>
 
+        <!-- Countdown Overlay -->
+        <div id="countdown-overlay" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 pointer-events-auto">
+            <div class="text-sm uppercase tracking-[0.5em] text-emerald-400 mb-4">Starting In</div>
+            <div id="countdown-number" class="text-[12rem] font-black leading-none">5</div>
+            <p class="text-slate-400 mt-4">Positions everyone!</p>
+        </div>
+
         <div id="start-screen" class="pointer-events-auto mt-12 flex flex-col items-center max-w-4xl">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-12 items-center bg-slate-900/50 p-10 rounded-3xl border border-slate-800">
                 <div class="text-left">
                     <h2 class="text-4xl font-bold mb-4">Join the Crew</h2>
-                    <p class="text-slate-300 mb-6 leading-relaxed">Scan the QR code to use your phone as a tracking marker, or use any brightly colored object. Point the colors at the camera to calibrate!</p>
+                    <p class="text-slate-300 mb-6 leading-relaxed italic">Scan the QR, select a color, and tap "READY".</p>
                     
                     <div id="player-lobby" class="space-y-3">
-                        <div id="p0-ui" class="flex items-center glass px-4 py-2 rounded-lg opacity-40"><div class="player-indicator bg-red-500"></div> Player 1: Waiting...</div>
-                        <div id="p1-ui" class="flex items-center glass px-4 py-2 rounded-lg opacity-40"><div class="player-indicator bg-blue-500"></div> Player 2: Waiting...</div>
-                        <div id="p2-ui" class="flex items-center glass px-4 py-2 rounded-lg opacity-40"><div class="player-indicator bg-green-500"></div> Player 3: Waiting...</div>
-                        <div id="p3-ui" class="flex items-center glass px-4 py-2 rounded-lg opacity-40"><div class="player-indicator bg-yellow-500"></div> Player 4: Waiting...</div>
+                        <div id="p0-ui" class="flex items-center glass px-4 py-3 rounded-xl opacity-20 border-l-4 border-red-500">
+                            <div class="player-indicator bg-red-500"></div> 
+                            <span class="flex-grow">Red Player</span>
+                            <span class="status-tag text-xs font-bold px-2 py-1 bg-slate-800 rounded">WAITING</span>
+                        </div>
+                        <div id="p1-ui" class="flex items-center glass px-4 py-3 rounded-xl opacity-20 border-l-4 border-blue-500">
+                            <div class="player-indicator bg-blue-500"></div> 
+                            <span class="flex-grow">Blue Player</span>
+                            <span class="status-tag text-xs font-bold px-2 py-1 bg-slate-800 rounded">WAITING</span>
+                        </div>
+                        <div id="p2-ui" class="flex items-center glass px-4 py-3 rounded-xl opacity-20 border-l-4 border-green-500">
+                            <div class="player-indicator bg-green-500"></div> 
+                            <span class="flex-grow">Green Player</span>
+                            <span class="status-tag text-xs font-bold px-2 py-1 bg-slate-800 rounded">WAITING</span>
+                        </div>
+                        <div id="p3-ui" class="flex items-center glass px-4 py-3 rounded-xl opacity-20 border-l-4 border-yellow-500">
+                            <div class="player-indicator bg-yellow-500"></div> 
+                            <span class="flex-grow">Yellow Player</span>
+                            <span class="status-tag text-xs font-bold px-2 py-1 bg-slate-800 rounded">WAITING</span>
+                        </div>
                     </div>
                 </div>
                 <div class="flex flex-col items-center bg-white p-6 rounded-2xl">
@@ -63,10 +97,10 @@
                 </div>
             </div>
             
-            <button id="start-btn" class="mt-8 bg-emerald-500 hover:bg-emerald-400 text-white px-16 py-5 rounded-full text-3xl font-black shadow-[0_0_40px_rgba(16,185,129,0.4)] transition-all">
-                START CLEANUP
-            </button>
-            <p id="cv-loading" class="mt-4 text-orange-400 animate-pulse font-bold">Initializing Computer Vision...</p>
+            <div id="lobby-footer" class="mt-8 flex flex-col items-center">
+                <p id="cv-loading" class="text-orange-400 animate-pulse font-bold mb-4">Initializing Computer Vision...</p>
+                <div id="ready-status-text" class="text-slate-400 uppercase tracking-widest text-sm">Waiting for players to get ready...</div>
+            </div>
         </div>
     </div>
 
@@ -84,9 +118,15 @@
 
         function setMobileColor(hex) {
             document.getElementById('mobile-controller-overlay').style.background = hex;
-            document.getElementById('mobile-controller-overlay').innerHTML = ""; // Clear UI for solid color
-            // Prevent screen sleep
+            document.getElementById('color-selection-ui').classList.add('hidden');
+            document.getElementById('ready-ui').classList.remove('hidden');
             if (navigator.wakeLock) navigator.wakeLock.request('screen');
+        }
+
+        function sendReady() {
+            // In this single-file local setup, we simulate the "Ready" intent.
+            // When players are detected by CV, we treat them as ready if they've passed the color selection.
+            document.getElementById('ready-ui').innerHTML = "<h2 class='text-4xl font-black text-white italic animate-bounce'>READY!</h2><p class='mt-4'>Point screen at camera</p>";
         }
 
         // 2. MAIN GAME CONFIG
@@ -98,20 +138,22 @@
                 { id: 3, name: 'Yellow', hex: '#eab308', hsv: { low: [20, 150, 100], high: [35, 255, 255] } }
             ],
             trash: [
-                { emoji: '🧴', score: 10, label: 'Plastic Bottle' },
-                { emoji: '🛍️', score: 15, label: 'Plastic Bag' },
-                { emoji: '🛞', score: 25, label: 'Old Tire' },
-                { emoji: '🥫', score: 5, label: 'Aluminium Can' },
-                { emoji: '☢️', score: -50, label: 'Toxic Waste' }
+                { emoji: '🧴', score: 10 },
+                { emoji: '🛍️', score: 15 },
+                { emoji: '🛞', score: 25 },
+                { emoji: '🥫', score: 5 },
+                { emoji: '☢️', score: -50 }
             ]
         };
 
-        let gameState = 'LOBBY';
+        let gameState = 'LOBBY'; // LOBBY, COUNTDOWN, PLAYING
         let score = 0;
         let players = CONFIG.colors.map(c => ({ ...c, x: 0, y: 0, active: false, trail: [] }));
         let debris = [];
         let particles = [];
         let cvReady = false;
+        let countdownTimer = null;
+        let countdownVal = 5;
         let video, cap, src, hsv, mask;
 
         const canvas = document.getElementById('game-canvas');
@@ -126,14 +168,11 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // 3. GAME OBJECTS
         class Debris {
             constructor() {
                 this.type = CONFIG.trash[Math.floor(Math.random() * CONFIG.trash.length)];
                 this.x = Math.random() * (canvas.width * 0.6) + (canvas.width * 0.2);
                 this.y = canvas.height + 50;
-                
-                // Physics to ensure they fly UP and IN
                 this.vx = (canvas.width/2 - this.x) * 0.015 + (Math.random() - 0.5) * 5;
                 this.vy = -Math.random() * 8 - 14; 
                 this.gravity = 0.22;
@@ -142,7 +181,6 @@
                 this.size = 60;
                 this.dead = false;
             }
-
             update() {
                 this.vy += this.gravity;
                 this.x += this.vx;
@@ -150,7 +188,6 @@
                 this.angle += this.rotation;
                 return (this.y < canvas.height + 100);
             }
-
             draw() {
                 ctx.save();
                 ctx.translate(this.x, this.y);
@@ -163,7 +200,6 @@
             }
         }
 
-        // 4. OPENCV TRACKING
         async function startCamera() {
             video = document.getElementById('webcam');
             const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
@@ -178,6 +214,8 @@
             cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
             cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
 
+            let activeCount = 0;
+
             players.forEach((p, i) => {
                 let low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), p.hsv.low.concat([0]));
                 let high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), p.hsv.high.concat([255]));
@@ -191,61 +229,102 @@
                 let bestIdx = -1;
                 for (let j = 0; j < contours.size(); ++j) {
                     let area = cv.contourArea(contours.get(j));
-                    if (area > 400 && area > maxArea) {
+                    if (area > 500 && area > maxArea) {
                         maxArea = area;
                         bestIdx = j;
                     }
                 }
+
+                const uiEl = document.getElementById(`p${i}-ui`);
+                const statusTag = uiEl.querySelector('.status-tag');
 
                 if (bestIdx !== -1) {
                     let m = cv.moments(contours.get(bestIdx));
                     p.x = canvas.width - (m.m10 / m.m00 / video.videoWidth * canvas.width);
                     p.y = (m.m01 / m.m00 / video.videoHeight * canvas.height);
                     p.active = true;
+                    activeCount++;
                     
-                    // Trail for visuals
                     p.trail.push({x: p.x, y: p.y});
                     if(p.trail.length > 10) p.trail.shift();
 
-                    document.getElementById(`p${i}-ui`).style.opacity = "1";
-                    document.getElementById(`p${i}-ui`).innerHTML = `<div class="player-indicator bg-[${p.hex}]"></div> ${p.name} Crew: ACTIVE`;
+                    uiEl.style.opacity = "1";
+                    statusTag.innerText = "READY";
+                    statusTag.className = "status-tag text-xs font-bold px-2 py-1 bg-emerald-500 text-white rounded pulse-emerald";
                 } else {
                     p.active = false;
                     p.trail = [];
+                    uiEl.style.opacity = "0.2";
+                    statusTag.innerText = "WAITING";
+                    statusTag.className = "status-tag text-xs font-bold px-2 py-1 bg-slate-800 rounded";
                 }
 
                 contours.delete(); hierarchy.delete(); low.delete(); high.delete();
             });
 
-            // Debug view
+            // Handle Countdown trigger
+            if (gameState === 'LOBBY' && activeCount > 0) {
+                startCountdown();
+            } else if (gameState === 'COUNTDOWN' && activeCount === 0) {
+                cancelCountdown();
+            }
+
             debugCtx.save();
             debugCtx.scale(-1, 1);
             debugCtx.drawImage(video, -debugCanvas.width, 0, debugCanvas.width, debugCanvas.height);
             debugCtx.restore();
         }
 
-        // 5. MAIN LOOP
+        function startCountdown() {
+            if (countdownTimer) return;
+            gameState = 'COUNTDOWN';
+            countdownVal = 5;
+            document.getElementById('countdown-overlay').classList.remove('hidden');
+            document.getElementById('countdown-number').innerText = countdownVal;
+            
+            countdownTimer = setInterval(() => {
+                countdownVal--;
+                if (countdownVal <= 0) {
+                    clearInterval(countdownTimer);
+                    beginGame();
+                } else {
+                    document.getElementById('countdown-number').innerText = countdownVal;
+                }
+            }, 1000);
+        }
+
+        function cancelCountdown() {
+            if (!countdownTimer) return;
+            clearInterval(countdownTimer);
+            countdownTimer = null;
+            gameState = 'LOBBY';
+            document.getElementById('countdown-overlay').classList.add('hidden');
+        }
+
+        function beginGame() {
+            gameState = 'PLAYING';
+            document.getElementById('countdown-overlay').classList.add('hidden');
+            document.getElementById('start-screen').style.display = 'none';
+        }
+
         function loop() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             processCV();
 
             if (gameState === 'PLAYING') {
-                if (Math.random() < 0.03) debris.push(new Debris());
+                if (Math.random() < 0.04) debris.push(new Debris());
 
                 debris = debris.filter(d => {
                     const alive = d.update();
                     d.draw();
-
-                    // Check slice
                     players.forEach(p => {
-                        if (p.active && Math.hypot(p.x - d.x, p.y - d.y) < 60) {
+                        if (p.active && Math.hypot(p.x - d.x, p.y - d.y) < 65) {
                             score += d.type.score;
                             document.getElementById('score-val').innerText = Math.max(0, score).toString().padStart(4, '0');
                             d.dead = true;
-                            // Particles
-                            for(let i=0; i<8; i++) particles.push({
+                            for(let i=0; i<12; i++) particles.push({
                                 x: d.x, y: d.y, 
-                                vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, 
+                                vx: (Math.random()-0.5)*12, vy: (Math.random()-0.5)*12, 
                                 life: 1, c: p.hex
                             });
                         }
@@ -254,33 +333,32 @@
                 });
             }
 
-            // Particles update
             particles = particles.filter(p => {
-                p.x += p.vx; p.y += p.vy; p.life -= 0.03;
+                p.x += p.vx; p.y += p.vy; p.life -= 0.025;
                 ctx.fillStyle = p.c;
                 ctx.globalAlpha = p.life;
-                ctx.fillRect(p.x, p.y, 4, 4);
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+                ctx.fill();
                 ctx.globalAlpha = 1;
                 return p.life > 0;
             });
 
-            // Draw player trails/nets
             players.forEach(p => {
                 if(p.active && p.trail.length > 1) {
                     ctx.beginPath();
                     ctx.strokeStyle = p.hex;
-                    ctx.lineWidth = 10;
+                    ctx.lineWidth = 12;
                     ctx.lineCap = 'round';
-                    ctx.shadowBlur = 20;
+                    ctx.shadowBlur = 25;
                     ctx.shadowColor = p.hex;
                     ctx.moveTo(p.trail[0].x, p.trail[0].y);
                     for(let i=1; i<p.trail.length; i++) ctx.lineTo(p.trail[i].x, p.trail[i].y);
                     ctx.stroke();
                     ctx.shadowBlur = 0;
-                    
                     ctx.fillStyle = "white";
                     ctx.beginPath();
-                    ctx.arc(p.x, p.y, 10, 0, Math.PI*2);
+                    ctx.arc(p.x, p.y, 12, 0, Math.PI*2);
                     ctx.fill();
                 }
             });
@@ -288,7 +366,6 @@
             requestAnimationFrame(loop);
         }
 
-        // 6. INIT
         window.onload = async () => {
             const qrUrl = window.location.href + (window.location.search ? '&' : '?') + 'mode=remote';
             new QRCode(document.getElementById("qrcode"), { text: qrUrl, width: 180, height: 180 });
@@ -305,15 +382,10 @@
                     mask = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC1);
                     cap = new cv.VideoCapture(video);
                     cvReady = true;
-                    document.getElementById('cv-loading').innerText = "CV Ready - Sensors Calibrated";
-                    document.getElementById('cv-loading').className = "mt-4 text-emerald-400 font-bold";
+                    document.getElementById('cv-loading').innerText = "CV Online - Ready for Players";
+                    document.getElementById('cv-loading').className = "text-emerald-400 font-bold mb-4";
                 }
             }, 500);
-
-            document.getElementById('start-btn').onclick = () => {
-                gameState = 'PLAYING';
-                document.getElementById('start-screen').style.display = 'none';
-            };
 
             loop();
         };
