@@ -26,37 +26,31 @@
         }
         .environment-bg {
             position: absolute; width: 100%; height: 100%;
-            transition: background 2s ease, filter 2s ease;
+            transition: background 2s ease;
             z-index: -1;
-            /* Replaced photographic background with a clean, deep ocean gradient */
             background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
         }
         .modal {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(255,255,255,0.95); padding: 2.5rem; border-radius: 1.5rem;
             z-index: 100; pointer-events: auto; text-align: center;
-            max-width: 400px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            width: 90%; max-width: 500px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
         }
-        /* Subtle animated bubbles for a "clean" water feel */
         .bubble {
-            position: absolute;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            pointer-events: none;
-            bottom: -100px;
-            animation: float Up 10s infinite linear;
+            position: absolute; background: rgba(255, 255, 255, 0.1); border-radius: 50%;
+            pointer-events: none; bottom: -100px; animation: floatUp 10s infinite linear;
         }
         @keyframes floatUp {
             from { transform: translateY(0); }
             to { transform: translateY(-120vh); }
         }
+        .progress-ring { transition: stroke-dashoffset 0.1s linear; }
     </style>
 </head>
 <body>
 
 <div id="game-container">
     <video id="video-feed" autoplay playsinline></video>
-    <!-- Background layer now uses a clean gradient instead of an image -->
     <div id="bg-layer" class="environment-bg"></div>
     
     <canvas id="game-canvas"></canvas>
@@ -65,8 +59,10 @@
     <div class="ui-layer p-8 flex justify-between items-start">
         <div class="score-card">
             <h1 class="text-4xl font-bold tracking-tight">ECO-NET COLLAB</h1>
-            <p class="mt-2 font-mono">Pollution Removed: <span id="score-val" class="text-green-400">0</span> kg</p>
-            <p class="text-sm opacity-80 mt-1">Goal: Work together to clean the environment!</p>
+            <div class="flex gap-8 mt-2 font-mono">
+                <p>Pollution: <span id="score-val" class="text-green-400">0</span> kg</p>
+                <p>Time: <span id="timer-val" class="text-yellow-400">60</span>s</p>
+            </div>
         </div>
         
         <div id="qr-container">
@@ -75,10 +71,33 @@
         </div>
     </div>
 
+    <!-- Start Interaction Modal -->
     <div id="setup-modal" class="modal">
         <h2 class="text-3xl font-bold mb-4 text-slate-800">Ready to Clean?</h2>
-        <p class="mb-6 text-slate-600">This game uses your webcam to track colored phone screens as controller "nets".</p>
-        <button id="start-btn" class="w-full bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-xl font-bold text-xl transition-all shadow-lg active:scale-95">START CAMERA</button>
+        <p class="mb-6 text-slate-600">Hold any colored net over the button for 5 seconds to start!</p>
+        
+        <div id="start-button-area" class="relative w-48 h-48 mx-auto flex items-center justify-center">
+            <svg class="absolute inset-0 w-full h-full -rotate-90">
+                <circle cx="96" cy="96" r="80" stroke="#e2e8f0" stroke-width="12" fill="transparent" />
+                <circle id="start-progress" class="progress-ring" cx="96" cy="96" r="80" stroke="#16a34a" stroke-width="12" fill="transparent" 
+                    stroke-dasharray="502.6" stroke-dashoffset="502.6" />
+            </svg>
+            <div class="z-10 bg-green-600 text-white w-32 h-32 rounded-full flex flex-col items-center justify-center shadow-inner">
+                <span class="font-bold text-lg">HOLD</span>
+                <span id="hold-countdown" class="text-2xl font-black">5.0s</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scoreboard Modal -->
+    <div id="result-modal" class="modal hidden">
+        <h2 class="text-4xl font-black mb-2 text-slate-800">ROUND COMPLETE!</h2>
+        <p class="text-xl text-slate-600 mb-6">Environment Status: <span id="env-status" class="font-bold">Partially Cleaned</span></p>
+        <div class="bg-slate-100 p-6 rounded-2xl mb-6">
+            <p class="text-sm uppercase tracking-widest text-slate-500 font-bold">Total Pollution Removed</p>
+            <p class="text-6xl font-black text-green-600"><span id="final-score">0</span><span class="text-2xl">kg</span></p>
+        </div>
+        <p class="text-slate-400 text-sm italic">Next round starts automatically in a few seconds...</p>
     </div>
 </div>
 
@@ -88,12 +107,25 @@
     const trackCanvas = document.getElementById('tracking-canvas');
     const bgLayer = document.getElementById('bg-layer');
     const scoreVal = document.getElementById('score-val');
+    const timerVal = document.getElementById('timer-val');
     const ctx = gameCanvas.getContext('2d');
     const tCtx = trackCanvas.getContext('2d');
 
+    // Modals & Progress
+    const setupModal = document.getElementById('setup-modal');
+    const resultModal = document.getElementById('result-modal');
+    const startProgressRing = document.getElementById('start-progress');
+    const holdCountdownText = document.getElementById('hold-countdown');
+
     let score = 0;
     let items = [];
-    
+    let gameState = 'SETUP'; // SETUP, PLAYING, RESULT
+    let roundTimeLeft = 60;
+    let holdStartTime = 0;
+    const HOLD_DURATION = 5000; // 5 seconds
+    const ROUND_DURATION = 60; 
+    const RESULT_DURATION = 8000; // 8 seconds
+
     let players = {
         red: { x: 0, y: 0, active: false, color: '#ef4444', h: [340, 20] },
         green: { x: 0, y: 0, active: false, color: '#22c55e', h: [90, 150] },
@@ -111,7 +143,6 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // Create some subtle ambient bubbles for a "cleaner" underwater look
     function createAmbientBubbles() {
         for(let i=0; i<15; i++) {
             const bubble = document.createElement('div');
@@ -127,22 +158,66 @@
     }
     createAmbientBubbles();
 
-    document.getElementById('start-btn').onclick = async () => {
+    // Start Camera Automatically on load
+    window.onload = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { width: 640, height: 480, facingMode: 'user' } 
             });
             video.srcObject = stream;
-            document.getElementById('setup-modal').style.display = 'none';
             gameLoop();
         } catch (err) {
-            console.error("Camera error:", err);
-            const msg = document.createElement('p');
-            msg.className = "text-red-500 mt-4";
-            msg.textContent = "Error: Please ensure webcam permissions are enabled.";
-            document.getElementById('setup-modal').appendChild(msg);
+            console.error("Camera access denied", err);
         }
     };
+
+    function startGame() {
+        gameState = 'PLAYING';
+        score = 0;
+        roundTimeLeft = ROUND_DURATION;
+        items = [];
+        setupModal.classList.add('hidden');
+        resultModal.classList.add('hidden');
+        updateEnvironment();
+        
+        const timerInterval = setInterval(() => {
+            if (gameState !== 'PLAYING') {
+                clearInterval(timerInterval);
+                return;
+            }
+            roundTimeLeft--;
+            timerVal.innerText = roundTimeLeft;
+            if (roundTimeLeft <= 0) {
+                endRound();
+            }
+        }, 1000);
+    }
+
+    function endRound() {
+        gameState = 'RESULT';
+        document.getElementById('final-score').innerText = score;
+        document.getElementById('env-status').innerText = score > 500 ? "Restored" : "Partially Cleaned";
+        resultModal.classList.remove('hidden');
+        
+        setTimeout(() => {
+            resetToSetup();
+        }, RESULT_DURATION);
+    }
+
+    function resetToSetup() {
+        gameState = 'SETUP';
+        resultModal.classList.add('hidden');
+        setupModal.classList.remove('hidden');
+        holdStartTime = 0;
+        updateStartProgress(0);
+    }
+
+    function updateStartProgress(progress) {
+        // progress is 0 to 1
+        const offset = 502.6 - (progress * 502.6);
+        startProgressRing.style.strokeDashoffset = offset;
+        holdCountdownText.innerText = (Math.max(0, (HOLD_DURATION - (progress * HOLD_DURATION))/1000)).toFixed(1) + 's';
+    }
 
     function spawnItem() {
         if (Math.random() < 0.05) {
@@ -154,7 +229,7 @@
                 vy: -Math.random() * 14 - 10,
                 type: isTrash ? TRASH_TYPES[Math.floor(Math.random() * TRASH_TYPES.length)] : BOMB_TYPES[Math.floor(Math.random() * BOMB_TYPES.length)],
                 isTrash: isTrash,
-                radius: 60, // Size increased by 50% as requested previously
+                radius: 60,
                 angle: 0,
                 rotation: (Math.random() - 0.5) * 0.15
             });
@@ -172,9 +247,7 @@
         const data = frame.data;
 
         Object.keys(players).forEach(p => { 
-            players[p].count = 0; 
-            players[p].sumX = 0; 
-            players[p].sumY = 0; 
+            players[p].count = 0; players[p].sumX = 0; players[p].sumY = 0; 
         });
 
         for (let i = 0; i < data.length; i += 64) { 
@@ -188,10 +261,8 @@
                         : (h >= p.h[0] || h <= p.h[1]);
                     
                     if (match) {
-                        const x = (i / 4) % trackCanvas.width;
-                        const y = Math.floor((i / 4) / trackCanvas.width);
-                        p.sumX += x;
-                        p.sumY += y;
+                        p.sumX += (i / 4) % trackCanvas.width;
+                        p.sumY += Math.floor((i / 4) / trackCanvas.width);
                         p.count++;
                         break;
                     }
@@ -199,18 +270,40 @@
             }
         }
 
+        let playerOverButton = false;
         Object.keys(players).forEach(key => {
             const p = players[key];
             if (p.count > 5) {
                 p.active = true;
-                const targetX = p.sumX / p.count;
-                const targetY = p.sumY / p.count;
+                const targetX = (p.sumX / p.count) * (gameCanvas.width / trackCanvas.width);
+                const targetY = (p.sumY / p.count) * (gameCanvas.height / trackCanvas.height);
                 p.x += (targetX - p.x) * 0.4;
                 p.y += (targetY - p.y) * 0.4;
+
+                // Check if hovering over start button in SETUP mode
+                if (gameState === 'SETUP') {
+                    const btnRect = document.getElementById('start-button-area').getBoundingClientRect();
+                    if (p.x > btnRect.left && p.x < btnRect.right && p.y > btnRect.top && p.y < btnRect.bottom) {
+                        playerOverButton = true;
+                    }
+                }
             } else {
                 p.active = false;
             }
         });
+
+        // Start countdown logic
+        if (gameState === 'SETUP') {
+            if (playerOverButton) {
+                if (holdStartTime === 0) holdStartTime = Date.now();
+                const elapsed = Date.now() - holdStartTime;
+                updateStartProgress(Math.min(1, elapsed / HOLD_DURATION));
+                if (elapsed >= HOLD_DURATION) startGame();
+            } else {
+                holdStartTime = 0;
+                updateStartProgress(0);
+            }
+        }
     }
 
     function rgbToHsl(r, g, b) {
@@ -233,8 +326,9 @@
 
     function update() {
         processTracking();
-        spawnItem();
+        if (gameState !== 'PLAYING') return;
 
+        spawnItem();
         for (let i = items.length - 1; i >= 0; i--) {
             const item = items[i];
             item.x += item.vx;
@@ -242,25 +336,17 @@
             item.vy += 0.25; 
             item.angle += item.rotation;
 
-            for (const [key, p] of Object.entries(players)) {
+            Object.values(players).forEach(p => {
                 if (p.active) {
-                    const dx = item.x - p.x;
-                    const dy = item.y - p.y;
-                    const dist = Math.sqrt(dx*dx + dy*dy);
-                    
+                    const dist = Math.hypot(item.x - p.x, item.y - p.y);
                     if (dist < item.radius + 35) {
-                        if (item.isTrash) {
-                            score += 10;
-                            items.splice(i, 1);
-                        } else {
-                            score = Math.max(0, score - 50); 
-                            items.splice(i, 1);
-                        }
+                        score += item.isTrash ? 10 : -50;
+                        score = Math.max(0, score);
+                        items.splice(i, 1);
                         updateEnvironment();
-                        break;
                     }
                 }
-            }
+            });
 
             if (item.y > gameCanvas.height + 150) items.splice(i, 1);
         }
@@ -269,22 +355,20 @@
     function updateEnvironment() {
         scoreVal.innerText = score;
         const cleanProgress = Math.min(100, score / 15);
-        // Clean look transition: lighten the background as the ocean gets "cleaner"
-        const startColor = [30, 41, 59]; // slate-800
-        const endColor = [14, 165, 233]; // sky-500
-        
+        const startColor = [30, 41, 59];
+        const endColor = [14, 165, 233];
         const r = Math.round(startColor[0] + (endColor[0] - startColor[0]) * (cleanProgress / 100));
         const g = Math.round(startColor[1] + (endColor[1] - startColor[1]) * (cleanProgress / 100));
         const b = Math.round(startColor[2] + (endColor[2] - startColor[2]) * (cleanProgress / 100));
-        
         bgLayer.style.background = `radial-gradient(circle at center, rgb(${r}, ${g}, ${b}) 0%, #0f172a 100%)`;
     }
 
     function draw() {
         ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+        if (gameState !== 'PLAYING' && gameState !== 'SETUP') return;
 
-        // Draw environmental items
-        ctx.font = '90px Arial'; // Maintained the 50% increase in size
+        // Draw items
+        ctx.font = '90px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         items.forEach(item => {
@@ -295,33 +379,16 @@
             ctx.restore();
         });
 
+        // Draw player nets
         Object.keys(players).forEach(key => {
             const p = players[key];
             if (p.active) {
                 const grad = ctx.createRadialGradient(p.x, p.y, 5, p.x, p.y, 60);
                 grad.addColorStop(0, p.color + '88');
                 grad.addColorStop(1, 'transparent');
-                
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, 60, 0, Math.PI * 2);
-                ctx.fillStyle = grad;
-                ctx.fill();
-
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, 45, 0, Math.PI * 2);
-                ctx.strokeStyle = p.color;
-                ctx.lineWidth = 4;
-                ctx.stroke();
-                
-                ctx.beginPath();
-                ctx.setLineDash([5, 5]);
-                ctx.arc(p.x, p.y, 40, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.setLineDash([]);
-
-                ctx.fillStyle = 'white';
-                ctx.font = 'bold 16px sans-serif';
-                ctx.fillText(key.toUpperCase(), p.x, p.y - 75);
+                ctx.beginPath(); ctx.arc(p.x, p.y, 60, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
+                ctx.beginPath(); ctx.arc(p.x, p.y, 45, 0, Math.PI * 2); ctx.strokeStyle = p.color; ctx.lineWidth = 4; ctx.stroke();
+                ctx.fillStyle = 'white'; ctx.font = 'bold 16px sans-serif'; ctx.fillText(key.toUpperCase(), p.x, p.y - 75);
             }
         });
     }
