@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eco-Net: Global Cleanup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0f172a; font-family: sans-serif; }
+        #game-container { position: relative; width: 100vw; height: 100vh; }
+        canvas { position: absolute; top: 0; left: 0; }
+        #video-feed { transform: scaleX(-1); display: none; }
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        .score-card { font-size: 2rem; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+        #qr-container { 
+            position: absolute; bottom: 20px; right: 20px; 
+            background: white; padding: 12px; border-radius: 12px; 
+            pointer-events: auto; text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+        #qr-image {
+            width: 140px;
+            height: 140px;
+            object-fit: contain;
+            display: block;
+        }
+        .environment-bg {
+            position: absolute; width: 100%; height: 100%;
+            transition: filter 2s ease;
+            z-index: -1;
+            background-size: cover;
+            background-position: center;
+            /* New cleaner background image */
+            background-image: url('https://images.unsplash.com/photo-1505118380757-91f5f5632de0?auto=format&fit=crop&q=80&w=2000');
+        }
+        .modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95); padding: 2.5rem; border-radius: 1.5rem;
+            z-index: 100; pointer-events: auto; text-align: center;
+            max-width: 400px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <video id="video-feed" autoplay playsinline></video>
+    <div id="bg-layer" class="environment-bg" style="filter: grayscale(80%) sepia(20%);"></div>
+    
+    <canvas id="game-canvas"></canvas>
+    <canvas id="tracking-canvas" style="opacity: 0.3;"></canvas>
+
+    <div class="ui-layer p-8 flex justify-between items-start">
+        <div class="score-card">
+            <h1 class="text-4xl font-bold tracking-tight">ECO-NET COLLAB</h1>
+            <p class="mt-2 font-mono">Pollution Removed: <span id="score-val" class="text-green-400">0</span> kg</p>
+            <p class="text-sm opacity-80 mt-1">Goal: Work together to clean the environment!</p>
+        </div>
+        
+        <div id="qr-container">
+            <img id="qr-image" src="color.png" alt="Scan to join">
+            <p class="text-xs mt-2 text-black font-bold tracking-widest uppercase">Scan to Join</p>
+        </div>
+    </div>
+
+    <div id="setup-modal" class="modal">
+        <h2 class="text-3xl font-bold mb-4 text-slate-800">Ready to Clean?</h2>
+        <p class="mb-6 text-slate-600">This game uses your webcam to track colored phone screens as controller "nets".</p>
+        <button id="start-btn" class="w-full bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-xl font-bold text-xl transition-all shadow-lg active:scale-95">START CAMERA</button>
+    </div>
+</div>
+
+<script>
+    const video = document.getElementById('video-feed');
+    const gameCanvas = document.getElementById('game-canvas');
+    const trackCanvas = document.getElementById('tracking-canvas');
+    const bgLayer = document.getElementById('bg-layer');
+    const scoreVal = document.getElementById('score-val');
+    const ctx = gameCanvas.getContext('2d');
+    const tCtx = trackCanvas.getContext('2d');
+
+    let score = 0;
+    let items = [];
+    
+    let players = {
+        red: { x: 0, y: 0, active: false, color: '#ef4444', h: [340, 20] },
+        green: { x: 0, y: 0, active: false, color: '#22c55e', h: [90, 150] },
+        blue: { x: 0, y: 0, active: false, color: '#3b82f6', h: [190, 250] },
+        yellow: { x: 0, y: 0, active: false, color: '#eab308', h: [45, 75] }
+    };
+
+    const TRASH_TYPES = ['🥤', '🧴', '🛍️', '📦', '🛢️'];
+    const BOMB_TYPES = ['🐠', '🐢', '🐬']; 
+
+    function resize() {
+        gameCanvas.width = trackCanvas.width = window.innerWidth;
+        gameCanvas.height = trackCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    document.getElementById('start-btn').onclick = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: 640, height: 480, facingMode: 'user' } 
+            });
+            video.srcObject = stream;
+            document.getElementById('setup-modal').style.display = 'none';
+            gameLoop();
+        } catch (err) {
+            console.error("Camera error:", err);
+            const msg = document.createElement('p');
+            msg.className = "text-red-500 mt-4";
+            msg.textContent = "Error: Please ensure webcam permissions are enabled.";
+            document.getElementById('setup-modal').appendChild(msg);
+        }
+    };
+
+    function spawnItem() {
+        if (Math.random() < 0.05) {
+            const isTrash = Math.random() > 0.25;
+            items.push({
+                x: Math.random() * gameCanvas.width,
+                y: gameCanvas.height + 50,
+                vx: (Math.random() - 0.5) * 6,
+                vy: -Math.random() * 14 - 10,
+                type: isTrash ? TRASH_TYPES[Math.floor(Math.random() * TRASH_TYPES.length)] : BOMB_TYPES[Math.floor(Math.random() * BOMB_TYPES.length)],
+                isTrash: isTrash,
+                radius: 60, // Increased radius from 40 to 60 (50% increase)
+                angle: 0,
+                rotation: (Math.random() - 0.5) * 0.15
+            });
+        }
+    }
+
+    function processTracking() {
+        tCtx.save();
+        tCtx.scale(-1, 1);
+        tCtx.translate(-trackCanvas.width, 0);
+        tCtx.drawImage(video, 0, 0, trackCanvas.width, trackCanvas.height);
+        tCtx.restore();
+
+        const frame = tCtx.getImageData(0, 0, trackCanvas.width, trackCanvas.height);
+        const data = frame.data;
+
+        Object.keys(players).forEach(p => { 
+            players[p].count = 0; 
+            players[p].sumX = 0; 
+            players[p].sumY = 0; 
+        });
+
+        for (let i = 0; i < data.length; i += 64) { 
+            const r = data[i], g = data[i+1], b = data[i+2];
+            const [h, s, l] = rgbToHsl(r, g, b);
+
+            if (s > 45 && l > 15 && l < 85) {
+                for (const [key, p] of Object.entries(players)) {
+                    const match = (p.h[0] < p.h[1]) 
+                        ? (h >= p.h[0] && h <= p.h[1])
+                        : (h >= p.h[0] || h <= p.h[1]);
+                    
+                    if (match) {
+                        const x = (i / 4) % trackCanvas.width;
+                        const y = Math.floor((i / 4) / trackCanvas.width);
+                        p.sumX += x;
+                        p.sumY += y;
+                        p.count++;
+                        break;
+                    }
+                }
+            }
+        }
+
+        Object.keys(players).forEach(key => {
+            const p = players[key];
+            if (p.count > 5) {
+                p.active = true;
+                const targetX = p.sumX / p.count;
+                const targetY = p.sumY / p.count;
+                p.x += (targetX - p.x) * 0.4;
+                p.y += (targetY - p.y) * 0.4;
+            } else {
+                p.active = false;
+            }
+        });
+    }
+
+    function rgbToHsl(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h, s, l = (max + min) / 2;
+        if (max === min) h = s = 0;
+        else {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            switch (max) {
+                case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                case g: h = (b - r) / d + 2; break;
+                case b: h = (r - g) / d + 4; break;
+            }
+            h /= 6;
+        }
+        return [h * 360, s * 100, l * 100];
+    }
+
+    function update() {
+        processTracking();
+        spawnItem();
+
+        for (let i = items.length - 1; i >= 0; i--) {
+            const item = items[i];
+            item.x += item.vx;
+            item.y += item.vy;
+            item.vy += 0.25; 
+            item.angle += item.rotation;
+
+            for (const [key, p] of Object.entries(players)) {
+                if (p.active) {
+                    const dx = item.x - p.x;
+                    const dy = item.y - p.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    
+                    if (dist < item.radius + 35) {
+                        if (item.isTrash) {
+                            score += 10;
+                            items.splice(i, 1);
+                        } else {
+                            score = Math.max(0, score - 50); 
+                            items.splice(i, 1);
+                        }
+                        updateEnvironment();
+                        break;
+                    }
+                }
+            }
+
+            if (item.y > gameCanvas.height + 150) items.splice(i, 1);
+        }
+    }
+
+    function updateEnvironment() {
+        scoreVal.innerText = score;
+        const cleanProgress = Math.min(100, score / 15);
+        const grayscale = Math.max(0, 80 - (cleanProgress * 0.8));
+        const sepia = Math.max(0, 20 - (cleanProgress * 0.2));
+        bgLayer.style.filter = `grayscale(${grayscale}%) sepia(${sepia}%) brightness(${100 + (cleanProgress*0.1)}%)`;
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+        // Draw environmental items
+        ctx.font = '90px Arial'; // Increased font size from 60px to 90px (50% increase)
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        items.forEach(item => {
+            ctx.save();
+            ctx.translate(item.x, item.y);
+            ctx.rotate(item.angle);
+            ctx.fillText(item.type, 0, 0);
+            ctx.restore();
+        });
+
+        Object.keys(players).forEach(key => {
+            const p = players[key];
+            if (p.active) {
+                const grad = ctx.createRadialGradient(p.x, p.y, 5, p.x, p.y, 60);
+                grad.addColorStop(0, p.color + '88');
+                grad.addColorStop(1, 'transparent');
+                
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 60, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 45, 0, Math.PI * 2);
+                ctx.strokeStyle = p.color;
+                ctx.lineWidth = 4;
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]);
+                ctx.arc(p.x, p.y, 40, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.fillText(key.toUpperCase(), p.x, p.y - 75);
+            }
+        });
+    }
+
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+</script>
+</body>
+</html>
