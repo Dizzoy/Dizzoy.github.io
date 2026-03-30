@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Soul-Bound Online</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #020617;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: linear-gradient(to bottom, #0f172a, #020617);
+        }
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid #334155;
+            padding: 2rem;
+            border-radius: 1.5rem;
+            text-align: center;
+            pointer-events: auto;
+            width: 90%;
+            max-width: 400px;
+            z-index: 50;
+        }
+        .input-field {
+            background: #1e293b;
+            border: 1px solid #475569;
+            color: white;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            width: 100%;
+            margin-bottom: 1rem;
+            text-align: center;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui-layer">
+        <!-- HUD -->
+        <div class="p-4 flex justify-between items-start w-full">
+            <div class="flex flex-col gap-1">
+                <span id="role-label" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Waiting...</span>
+                <div class="w-32 h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                    <div id="health-bar" class="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all w-full"></div>
+                </div>
+            </div>
+            <div class="text-right">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Altitude</span>
+                <p id="score-display" class="text-xl font-mono font-bold">0m</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lobby Modal -->
+    <div id="lobby-modal" class="modal">
+        <h1 class="text-3xl font-black mb-2 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-400">SOUL-BOUND</h1>
+        <p class="text-slate-400 text-xs mb-6 font-medium">ONLINE MULTIPLAYER CO-OP</p>
+        
+        <div class="space-y-3">
+            <input type="text" id="room-input" class="input-field" placeholder="ENTER ROOM NAME" maxlength="10">
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="joinRoom('p1')" class="py-3 bg-cyan-600 text-white text-xs font-bold rounded-lg hover:bg-cyan-500">HOST (P1)</button>
+                <button onclick="joinRoom('p2')" class="py-3 bg-purple-600 text-white text-xs font-bold rounded-lg hover:bg-purple-500">JOIN (P2)</button>
+            </div>
+        </div>
+        <p class="mt-6 text-[10px] text-slate-500">On desktop: A/D or Arrows. On phone: Drag anywhere.</p>
+    </div>
+
+    <!-- Waiting Modal -->
+    <div id="waiting-modal" class="modal hidden">
+        <div class="animate-pulse flex flex-col items-center">
+            <div class="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <h2 class="text-xl font-bold mb-2">Waiting for Partner...</h2>
+            <p id="room-display" class="text-slate-400 font-mono"></p>
+        </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="over-modal" class="modal hidden">
+        <h2 class="text-2xl font-bold text-red-400 mb-2">TETHER SNAPPED</h2>
+        <p id="final-score" class="text-slate-300 mb-6 font-mono text-xl">Altitude: 0m</p>
+        <button onclick="location.reload()" class="w-full py-4 bg-slate-700 text-white font-bold rounded-xl">BACK TO LOBBY</button>
+    </div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const firebaseConfig = JSON.parse(__firebase_config);
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'soul-bound-v2';
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const healthBar = document.getElementById('health-bar');
+    const scoreDisplay = document.getElementById('score-display');
+    const lobbyModal = document.getElementById('lobby-modal');
+    const waitingModal = document.getElementById('waiting-modal');
+    const overModal = document.getElementById('over-modal');
+
+    let gameActive = false;
+    let myRole = null; // 'p1' or 'p2'
+    let roomId = null;
+    let score = 0;
+    let health = 100;
+    let scrollSpeed = 2;
+    let frame = 0;
+
+    const players = {
+        p1: { x: 150, y: 0, color: '#06b6d4', glow: 'cyan', lastUpdate: 0 },
+        p2: { x: 350, y: 0, color: '#a855f7', glow: 'purple', lastUpdate: 0 }
+    };
+
+    const obstacles = [];
+    const MAX_TETHER = 250;
+    const keys = {};
+
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    // Touch and Mouse Drag Logic
+    let isDragging = false;
+    const handleInput = (clientX) => {
+        if (!gameActive || !myRole) return;
+        const rect = canvas.getBoundingClientRect();
+        const canvasX = (clientX - rect.left) * (canvas.width / rect.width);
+        players[myRole].x = Math.max(20, Math.min(canvas.width - 20, canvasX));
+    };
+
+    window.addEventListener('mousedown', () => isDragging = true);
+    window.addEventListener('mouseup', () => isDragging = false);
+    window.addEventListener('mousemove', (e) => isDragging && handleInput(e.clientX));
+    window.addEventListener('touchstart', (e) => handleInput(e.touches[0].clientX), {passive: false});
+    window.addEventListener('touchmove', (e) => handleInput(e.touches[0].clientX), {passive: false});
+
+    function resize() {
+        canvas.width = Math.min(window.innerWidth, 500);
+        canvas.height = window.innerHeight;
+        players.p1.y = canvas.height * 0.7;
+        players.p2.y = canvas.height * 0.7;
+    }
+
+    // Multiplayer Sync Logic
+    window.joinRoom = async (role) => {
+        const input = document.getElementById('room-input').value.trim().toUpperCase();
+        if (!input) return alert("Enter a Room Name");
+        
+        roomId = input;
+        myRole = role;
+        document.getElementById('room-display').innerText = `ROOM: ${roomId}`;
+        lobbyModal.classList.add('hidden');
+        waitingModal.classList.remove('hidden');
+
+        await signInAnonymously(auth);
+        
+        const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
+        
+        // Listen to room updates
+        onSnapshot(roomRef, (snapshot) => {
+            const data = snapshot.data();
+            if (!data) {
+                // If I'm P1 and room doesn't exist, create it
+                if (myRole === 'p1') {
+                    setDoc(roomRef, { 
+                        p1: { x: canvas.width * 0.3, active: true },
+                        p2: { x: canvas.width * 0.7, active: false },
+                        health: 100,
+                        score: 0,
+                        frame: 0
+                    });
+                }
+                return;
+            }
+
+            // Sync peer position
+            const otherRole = myRole === 'p1' ? 'p2' : 'p1';
+            if (data[otherRole]) {
+                players[otherRole].x = data[otherRole].x;
+            }
+
+            // Global stats
+            health = data.health;
+            score = data.score;
+            frame = data.frame;
+
+            // Start game if both active
+            if (data.p1?.active && data.p2?.active && !gameActive) {
+                startActualGame();
+            }
+
+            // Handle Game Over
+            if (data.health <= 0 && gameActive) {
+                endGame();
+            }
+        }, (err) => console.error(err));
+
+        // P2 marks self active
+        if (myRole === 'p2') {
+            updateDoc(roomRef, { "p2.active": true });
+        }
+
+        // Set local role label
+        document.getElementById('role-label').innerText = myRole === 'p1' ? 'PLAYER 1 (HOST)' : 'PLAYER 2 (GUEST)';
+        document.getElementById('role-label').className = `text-[10px] font-bold uppercase tracking-widest ${myRole === 'p1' ? 'text-cyan-400' : 'text-purple-400'}`;
+    };
+
+    function startActualGame() {
+        waitingModal.classList.add('hidden');
+        gameActive = true;
+        requestAnimationFrame(gameLoop);
+    }
+
+    function endGame() {
+        gameActive = false;
+        document.getElementById('final-score').innerText = `Altitude: ${Math.floor(score)}m`;
+        overModal.classList.remove('hidden');
+    }
+
+    // Main Game Loop
+    async function update() {
+        if (!gameActive) return;
+
+        // Local movement (Keyboard fallback)
+        if (myRole === 'p1') {
+            if (keys['KeyA']) players.p1.x -= 5;
+            if (keys['KeyD']) players.p1.x += 5;
+        } else {
+            if (keys['ArrowLeft']) players.p2.x -= 5;
+            if (keys['ArrowRight']) players.p2.x += 5;
+        }
+        players[myRole].x = Math.max(20, Math.min(canvas.width - 20, players[myRole].x));
+
+        // Only P1 handles the "Engine" (Obstacles, Scoring, Health Logic)
+        // This prevents conflicting calculations
+        if (myRole === 'p1') {
+            const dx = players.p1.x - players.p2.x;
+            const dist = Math.abs(dx);
+            
+            let newHealth = health;
+            if (dist > MAX_TETHER) newHealth -= 0.4;
+            else if (newHealth < 100) newHealth += 0.05;
+
+            // Simple pseudo-random obstacles based on frame
+            if (frame % 60 === 0) {
+                // Logic can be added here, but for now we focus on tether co-op
+            }
+
+            // Push state to Firestore
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
+            await updateDoc(roomRef, {
+                "p1.x": players.p1.x,
+                health: Math.max(0, newHealth),
+                score: score + 0.1,
+                frame: frame + 1
+            });
+        } else {
+            // P2 only pushes their X
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomId);
+            await updateDoc(roomRef, {
+                "p2.x": players.p2.x
+            });
+        }
+
+        // Update local HUD
+        healthBar.style.width = health + '%';
+        scoreDisplay.innerText = Math.floor(score) + 'm';
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Tether
+        const dist = Math.abs(players.p1.x - players.p2.x);
+        ctx.beginPath();
+        ctx.strokeStyle = dist > MAX_TETHER ? '#ef4444' : '#60a5fa';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 5]);
+        ctx.moveTo(players.p1.x, players.p1.y);
+        ctx.lineTo(players.p2.x, players.p2.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw Players
+        [players.p1, players.p2].forEach(p => {
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = p.glow;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    }
+
+    function gameLoop() {
+        if (!gameActive) return;
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+
+</script>
+</body>
+</html>
