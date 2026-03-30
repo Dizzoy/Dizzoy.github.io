@@ -1,0 +1,254 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { 
+  getFirestore, 
+  doc, 
+  setDoc, 
+  onSnapshot, 
+  updateDoc, 
+  collection, 
+  deleteDoc,
+  serverTimestamp,
+  getDoc
+} from 'firebase/firestore';
+import { Users, Zap, Target, Rocket, Loader2, AlertCircle, LogOut, Shield, ChevronRight } from 'lucide-react';
+
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'neon-sync-v6';
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [roomInput, setRoomInput] = useState('');
+  const [roomCode, setRoomCode] = useState('');
+  const [isJoined, setIsJoined] = useState(false);
+  const [players, setPlayers] = useState({});
+  const [gameState, setGameState] = useState(null);
+  const [isLoadingRoom, setIsLoadingRoom] = useState(false);
+  const [error, setError] = useState(null);
+  
+  const canvasRef = useRef(null);
+  const requestRef = useRef();
+  const keysPressed = useRef({});
+
+  // 1. Auth Initialization
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        setError("Network authentication failed.");
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Room & Game Sync
+  useEffect(() => {
+    if (!user || !roomCode || !isJoined) return;
+
+    setIsLoadingRoom(true);
+    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+    const playersRef = collection(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode, 'players');
+    const myPlayerRef = doc(playersRef, user.uid);
+
+    const setupRoom = async () => {
+      try {
+        const roomSnap = await getDoc(roomRef);
+        if (!roomSnap.exists()) {
+          await setDoc(roomRef, {
+            status: 'lobby',
+            hostId: user.uid,
+            nodeX: 400,
+            nodeY: 300,
+            score: 0,
+            createdAt: serverTimestamp()
+          });
+        }
+
+        await setDoc(myPlayerRef, {
+          id: user.uid,
+          name: `P-${user.uid.slice(0, 3)}`.toUpperCase(),
+          x: 400,
+          y: 300,
+          color: `hsl(${Math.random() * 360}, 85%, 60%)`,
+          lastUpdate: serverTimestamp()
+        });
+
+        setIsLoadingRoom(false);
+      } catch (err) {
+        setError("Could not link to room.");
+        setIsLoadingRoom(false);
+      }
+    };
+
+    setupRoom();
+
+    const unsubPlayers = onSnapshot(playersRef, (snapshot) => {
+      const p = {};
+      snapshot.docs.forEach(doc => { p[doc.id] = doc.data(); });
+      setPlayers(p);
+    });
+
+    const unsubRoom = onSnapshot(roomRef, (snapshot) => {
+      if (snapshot.exists()) setGameState(snapshot.data());
+    });
+
+    return () => {
+      unsubPlayers();
+      unsubRoom();
+      deleteDoc(myPlayerRef).catch(() => {});
+    };
+  }, [user, roomCode, isJoined]);
+
+  // 3. Game Loop
+  useEffect(() => {
+    if (gameState?.status !== 'playing' || !user || !isJoined) return;
+
+    const update = () => {
+      const me = players[user.uid];
+      if (!me) return (requestRef.current = requestAnimationFrame(update));
+
+      let dx = 0, dy = 0;
+      const speed = 6;
+      if (keysPressed.current['ArrowUp'] || keysPressed.current['w']) dy -= speed;
+      if (keysPressed.current['ArrowDown'] || keysPressed.current['s']) dy += speed;
+      if (keysPressed.current['ArrowLeft'] || keysPressed.current['a']) dx -= speed;
+      if (keysPressed.current['ArrowRight'] || keysPressed.current['d']) dx += speed;
+
+      if (dx !== 0 || dy !== 0) {
+        const newX = Math.max(20, Math.min(780, me.x + dx));
+        const newY = Math.max(20, Math.min(580, me.y + dy));
+        updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode, 'players', user.uid), { 
+          x: newX, y: newY, lastUpdate: serverTimestamp() 
+        });
+
+        const dist = Math.hypot(newX - (gameState?.nodeX || 0), newY - (gameState?.nodeY || 0));
+        if (dist < 35) {
+          updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode), {
+            nodeX: Math.random() * 700 + 50,
+            nodeY: Math.random() * 500 + 50,
+            score: (gameState.score || 0) + 10
+          });
+        }
+      }
+      draw();
+      requestRef.current = requestAnimationFrame(update);
+    };
+
+    const draw = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, 800, 600);
+      
+      // Cyber Grid
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1;
+      for(let i=0; i<800; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,600); ctx.stroke(); }
+      for(let i=0; i<600; i+=40) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(800,i); ctx.stroke(); }
+
+      // Target Node
+      ctx.beginPath();
+      ctx.arc(gameState.nodeX, gameState.nodeY, 18 + Math.sin(Date.now()/100)*4, 0, Math.PI*2);
+      ctx.fillStyle = '#10b981';
+      ctx.shadowBlur = 25; ctx.shadowColor = '#10b981';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Pulse ring
+      ctx.beginPath();
+      ctx.arc(gameState.nodeX, gameState.nodeY, 30 + Math.sin(Date.now()/300)*10, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.2)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      Object.values(players).forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 15, 0, Math.PI*2);
+        ctx.fillStyle = p.color;
+        ctx.shadowBlur = 15; ctx.shadowColor = p.color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 12px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(p.id === user.uid ? "YOU" : p.name, p.x, p.y - 25);
+      });
+    };
+
+    const kD = (e) => { keysPressed.current[e.key] = true; };
+    const kU = (e) => { keysPressed.current[e.key] = false; };
+    window.addEventListener('keydown', kD);
+    window.addEventListener('keyup', kU);
+    requestRef.current = requestAnimationFrame(update);
+    return () => {
+      cancelAnimationFrame(requestRef.current);
+      window.removeEventListener('keydown', kD);
+      window.removeEventListener('keyup', kU);
+    };
+  }, [gameState, players, roomCode, user, isJoined]);
+
+  if (!user) return <div className="h-screen bg-black flex items-center justify-center text-blue-500 font-mono tracking-widest animate-pulse">INITIATING...</div>;
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-blue-500/40">
+      {!isJoined ? (
+        <div className="max-w-md mx-auto pt-32 px-6">
+          <div className="bg-slate-900/50 backdrop-blur-xl rounded-[2.5rem] p-10 border border-slate-800 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-8 opacity-10"><Zap className="w-24 h-24" /></div>
+            
+            <h1 className="text-4xl font-black mb-2 tracking-tighter italic">NEON SYNC</h1>
+            <p className="text-slate-500 text-xs font-black uppercase tracking-[0.3em] mb-10">Neural Co-op Mission</p>
+            
+            <div className="space-y-4">
+              <div className="relative group">
+                <input 
+                  type="text" 
+                  value={roomInput}
+                  onChange={(e) => setRoomInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                  placeholder="JOIN CODE"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-6 font-mono text-3xl text-center tracking-[0.5em] outline-none focus:border-blue-600 transition-all placeholder:tracking-normal placeholder:text-sm placeholder:font-sans placeholder:font-bold placeholder:text-slate-700"
+                  maxLength={6}
+                />
+              </div>
+              <button 
+                onClick={() => { setRoomCode(roomInput); setIsJoined(true); }}
+                disabled={!roomInput}
+                className="w-full bg-blue-600 hover:bg-blue-500 py-6 rounded-2xl font-black text-xl tracking-widest transition-all active:scale-95 disabled:opacity-20 shadow-xl shadow-blue-900/20 flex items-center justify-center gap-3"
+              >
+                ACCESS MISSION <ChevronRight className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="mt-8 p-4 bg-slate-950/50 rounded-xl border border-slate-800/50">
+               <p className="text-[10px] text-slate-500 font-black text-center uppercase tracking-widest">
+                 TELL FRIENDS TO ENTER THE SAME CODE TO JOIN
+               </p>
+            </div>
+          </div>
+        </div>
+      ) : isLoadingRoom || !gameState ? (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-black">
+          <Loader2 className="animate-spin w-12 h-12 text-blue-600 mb-4" />
+          <p className="text-blue-500 font-black tracking-[0.5em] text-[10px]">ESTABLISHING NEURAL LINK...</p>
+        </div>
+      ) : gameState.status === 'lobby' ? (
+        <div className="max-w-xl mx-auto pt-20 px-6">
+          <div className="bg-slate-900 rounded-[3rem] p-10 border border-slate-800 shadow-2xl relative">
+            <div className="flex justify-between items-end mb-12">
+              <div>
+                <p className="text-blue-500 font-black text-[10px] tracking-[0.4em] mb-1 uppercase">Squad Secret Code</p>
+                <h2 className="text-6xl font-black text-white tracking-tighter uppercase">{roomCode}</h2>
+              </div>
+      
