@@ -2,91 +2,75 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chroma Ball - No Sleep</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Stationary Chroma Ball</title>
     <style>
+        /* Force the background to stay dark and fill the screen */
         body, html {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #1a1a1a; /* Dark background to see the ball clearly */
+            background-color: #1a1a1a;
+            /* Flexbox perfectly centers the child element */
             display: flex;
             align-items: center;
             justify-content: center;
-            touch-action: none; /* Prevents page scrolling while dragging */
         }
 
         #chroma-ball {
-            width: 150px;
-            height: 150px;
+            /* Adjust size here */
+            width: 200px; 
+            height: 200px;
             background-color: #00b140; /* Chroma Green */
             border-radius: 50%;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            z-index: 999;
+        }
+
+        /* Invisible overlay to catch the first tap for WakeLock */
+        #overlay {
             position: absolute;
-            cursor: grab;
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            font-family: sans-serif;
-            font-size: 12px;
-            color: rgba(0,0,0,0.5);
-            user-select: none;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            z-index: 1000;
         }
     </style>
 </head>
 <body>
 
-    <div id="chroma-ball">Drag Me</div>
+    <div id="chroma-ball"></div>
+    <div id="overlay" onclick="startFeatures()"></div>
 
     <script>
-        const ball = document.getElementById('chroma-ball');
         let wakeLock = null;
-        let isDragging = false;
 
-        // --- Wake Lock & Fullscreen Logic ---
-        async function activateFeatures() {
-            // Request Fullscreen
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(() => {});
+        async function startFeatures() {
+            // Remove overlay so it doesn't interfere after activation
+            document.getElementById('overlay').style.display = 'none';
+
+            // 1. Enter Fullscreen (Hides mobile address bars)
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen();
+            } else if (document.documentElement.webkitRequestFullscreen) { /* Safari iOS */
+                document.documentElement.webkitRequestFullscreen();
             }
-            // Request Wake Lock
-            if ('wakeLock' in navigator && !wakeLock) {
+
+            // 2. Prevent Dimming
+            if ('wakeLock' in navigator) {
                 try {
                     wakeLock = await navigator.wakeLock.request('screen');
-                    ball.innerText = ""; // Hide text once active
                 } catch (err) {
-                    console.error(err);
+                    console.error("WakeLock failed:", err);
                 }
             }
         }
 
-        // --- Dragging Logic ---
-        ball.addEventListener('pointerdown', (e) => {
-            isDragging = true;
-            ball.style.cursor = 'grabbing';
-            activateFeatures(); // Activate anti-dim on first touch
-        });
-
-        window.addEventListener('pointermove', (e) => {
-            if (!isDragging) return;
-            
-            // Center the ball on the finger/cursor
-            const x = e.clientX - ball.offsetWidth / 2;
-            const y = e.clientY - ball.offsetHeight / 2;
-            
-            ball.style.left = `${x}px`;
-            ball.style.top = `${y}px`;
-        });
-
-        window.addEventListener('pointerup', () => {
-            isDragging = false;
-            ball.style.cursor = 'grab';
-        });
-
-        // Re-lock screen if user switches back to tab
+        // Keep screen awake if user switches back to the tab
         document.addEventListener('visibilitychange', async () => {
             if (wakeLock !== null && document.visibilityState === 'visible') {
                 wakeLock = await navigator.wakeLock.request('screen');
