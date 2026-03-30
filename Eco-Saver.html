@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Eco-Saver: Billboard Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
 
@@ -55,6 +54,7 @@
             pointer-events: none;
         }
         
+        /* Custom Pattern based on user image_78142c.jpg */
         .eco-bg {
             background-color: #ffffff;
             background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 80 Q30 50 20 50 Q30 50 30 20 Q30 50 40 50 Q30 50 30 80' stroke='%2386efac' fill='none' stroke-width='1.5'/%3E%3Ccircle cx='70' cy='30' r='12' fill='%23dcfce7' stroke='%234ade80' stroke-width='1'/%3E%3Cpath d='M70 42 L70 70' stroke='%234ade80' stroke-width='1.5'/%3E%3Cpath d='M10 20 L15 18 M85 80 L90 78' stroke='%23334155' stroke-width='0.5'/%3E%3C/svg%3E");
@@ -170,8 +170,9 @@
                 <div class="text-green-600 font-outline-2">Saver</div>
             </h1>
             
+            <!-- Static Image QR Code -->
             <div class="flex justify-center mb-8 p-4 bg-white border-2 border-slate-100 rounded-3xl shadow-sm">
-                <div id="qrcode" style="width: 160px; height: 160px;" class="flex justify-center items-center"></div>
+                <img src="qr-eco-saver.png" alt="Scan to Play" style="width: 160px; height: 160px; object-fit: contain;">
             </div>
             
             <div class="space-y-4 w-full flex flex-col items-center">
@@ -225,4 +226,3 @@
                 <div id="final-score" class="text-7xl font-black text-white tabular leading-none text-center">0</div>
             </div>
             
-          
