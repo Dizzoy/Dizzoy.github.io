@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eco-Net: Global Cleanup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0f172a; font-family: sans-serif; }
+        #game-container { position: relative; width: 100vw; height: 100vh; }
+        canvas { position: absolute; top: 0; left: 0; }
+        #video-feed { transform: scaleX(-1); display: none; }
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        .score-card { font-size: 2rem; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+        #qr-container { 
+            position: absolute; bottom: 20px; right: 20px; 
+            background: white; padding: 10px; border-radius: 8px; 
+            pointer-events: auto; text-align: center;
+        }
+        .environment-bg {
+            position: absolute; width: 100%; height: 100%;
+            transition: filter 2s ease;
+            z-index: -1;
+            background-size: cover;
+            background-position: center;
+        }
+        .modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95); padding: 2rem; border-radius: 1rem;
+            z-index: 100; pointer-events: auto; text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <video id="video-feed" autoplay playsinline></video>
+    <div id="bg-layer" class="environment-bg" style="background-image: url('https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&q=80&w=1600'); filter: grayscale(80%) sepia(20%);"></div>
+    
+    <canvas id="game-canvas"></canvas>
+    <canvas id="tracking-canvas" style="opacity: 0.3;"></canvas>
+
+    <div class="ui-layer p-8 flex justify-between items-start">
+        <div class="score-card">
+            <h1 class="text-4xl font-bold">ECO-NET COLLAB</h1>
+            <p>Pollution Removed: <span id="score-val">0</span> kg</p>
+            <p class="text-sm opacity-80">Goal: Clean the ocean to restore color!</p>
+        </div>
+        
+        <div id="qr-container">
+            <div id="qrcode"></div>
+            <p class="text-xs mt-2 text-black font-bold">SCAN TO JOIN</p>
+        </div>
+    </div>
+
+    <div id="setup-modal" class="modal">
+        <h2 class="text-2xl font-bold mb-4">Setup Your Camera</h2>
+        <p class="mb-4">Point your webcam at a clear space. Players will use their phones to control nets.</p>
+        <button id="start-btn" class="bg-green-600 text-white px-6 py-2 rounded-full font-bold">START CLEANUP</button>
+    </div>
+</div>
+
+<script>
+    const video = document.getElementById('video-feed');
+    const gameCanvas = document.getElementById('game-canvas');
+    const trackCanvas = document.getElementById('tracking-canvas');
+    const bgLayer = document.getElementById('bg-layer');
+    const scoreVal = document.getElementById('score-val');
+    const ctx = gameCanvas.getContext('2d');
+    const tCtx = trackCanvas.getContext('2d');
+
+    let score = 0;
+    let items = [];
+    let players = {
+        red: { x: 0, y: 0, active: false, color: '#ef4444', h: [340, 20] },
+        green: { x: 0, y: 0, active: false, color: '#22c55e', h: [90, 150] },
+        blue: { x: 0, y: 0, active: false, color: '#3b82f6', h: [190, 250] },
+        yellow: { x: 0, y: 0, active: false, color: '#eab308', h: [45, 75] }
+    };
+
+    const TRASH_TYPES = ['🥤', '🧴', '🛍️', '📦', '🛢️'];
+    const BOMB_TYPES = ['🐠', '🐢', '🐬']; // Don't catch these!
+
+    // Resize canvases
+    function resize() {
+        gameCanvas.width = trackCanvas.width = window.innerWidth;
+        gameCanvas.height = trackCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Generate QR Code (Points to the controller page)
+    // In a real scenario, this would be a hosted URL
+    new QRCode(document.getElementById("qrcode"), {
+        text: window.location.href.replace('index.html', 'controller.html'),
+        width: 128,
+        height: 128
+    });
+
+    // Start Camera
+    document.getElementById('start-btn').onclick = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+            video.srcObject = stream;
+            document.getElementById('setup-modal').style.display = 'none';
+            gameLoop();
+        } catch (err) {
+            console.error("Camera error:", err);
+            alert("Please enable camera access.");
+        }
+    };
+
+    function spawnItem() {
+        if (Math.random() < 0.05) {
+            const isTrash = Math.random() > 0.2;
+            items.push({
+                x: Math.random() * gameCanvas.width,
+                y: gameCanvas.height + 50,
+                vx: (Math.random() - 0.5) * 4,
+                vy: -Math.random() * 12 - 8,
+                type: isTrash ? TRASH_TYPES[Math.floor(Math.random() * TRASH_TYPES.length)] : BOMB_TYPES[Math.floor(Math.random() * BOMB_TYPES.length)],
+                isTrash: isTrash,
+                radius: 40,
+                angle: 0,
+                rotation: (Math.random() - 0.5) * 0.1
+            });
+        }
+    }
+
+    function processTracking() {
+        tCtx.save();
+        tCtx.scale(-1, 1);
+        tCtx.translate(-trackCanvas.width, 0);
+        tCtx.drawImage(video, 0, 0, trackCanvas.width, trackCanvas.height);
+        tCtx.restore();
+
+        const frame = tCtx.getImageData(0, 0, trackCanvas.width, trackCanvas.height);
+        const data = frame.data;
+
+        // Reset positions
+        Object.keys(players).forEach(p => players[p].count = 0);
+        Object.keys(players).forEach(p => { players[p].sumX = 0; players[p].sumY = 0; });
+
+        for (let i = 0; i < data.length; i += 32) { // Sampling for performance
+            const r = data[i], g = data[i+1], b = data[i+2];
+            const [h, s, l] = rgbToHsl(r, g, b);
+
+            if (s > 40 && l > 20 && l < 80) {
+                for (const [key, p] of Object.entries(players)) {
+                    const match = (p.h[0] < p.h[1]) 
+                        ? (h >= p.h[0] && h <= p.h[1])
+                        : (h >= p.h[0] || h <= p.h[1]);
+                    
+                    if (match) {
+                        const x = (i / 4) % trackCanvas.width;
+                        const y = Math.floor((i / 4) / trackCanvas.width);
+                        p.sumX += x;
+                        p.sumY += y;
+                        p.count++;
+                        break;
+                    }
+                }
+            }
+        }
+
+        Object.keys(players).forEach(key => {
+            const p = players[key];
+            if (p.count > 10) {
+                p.active = true;
+                const targetX = p.sumX / p.count;
+                const targetY = p.sumY / p.count;
+                p.x += (targetX - p.x) * 0.3; // Smoothing
+                p.y += (targetY - p.y) * 0.3;
+            } else {
+                p.active = false;
+            }
+        });
+    }
+
+    function rgbToHsl(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h, s, l = (max + min) / 2;
+        if (max === min) h = s = 0;
+        else {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            switch (max) {
+                case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                case g: h = (b - r) / d + 2; break;
+                case b: h = (r - g) / d + 4; break;
+            }
+            h /= 6;
+        }
+        return [h * 360, s * 100, l * 100];
+    }
+
+    function update() {
+        processTracking();
+        spawnItem();
+
+        for (let i = items.length - 1; i >= 0; i--) {
+            const item = items[i];
+            item.x += item.vx;
+            item.y += item.vy;
+            item.vy += 0.2; // Gravity
+            item.angle += item.rotation;
+
+            // Check Collision with players
+            for (const [key, p] of Object.entries(players)) {
+                if (p.active) {
+                    const dist = Math.hypot(item.x - p.x, item.y - p.y);
+                    if (dist < item.radius + 30) {
+                        if (item.isTrash) {
+                            score += 10;
+                            items.splice(i, 1);
+                        } else {
+                            score = Math.max(0, score - 50); // Penalty for wildlife
+                            items.splice(i, 1);
+                        }
+                        updateEnvironment();
+                        break;
+                    }
+                }
+            }
+
+            if (item.y > gameCanvas.height + 100) items.splice(i, 1);
+        }
+    }
+
+    function updateEnvironment() {
+        scoreVal.innerText = score;
+        const cleanProgress = Math.min(100, score / 10); // 1000 score = clean
+        const grayscale = 80 - (cleanProgress * 0.8);
+        const sepia = 20 - (cleanProgress * 0.2);
+        bgLayer.style.filter = `grayscale(${grayscale}%) sepia(${sepia}%)`;
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+        // Draw items
+        ctx.font = '50px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        items.forEach(item => {
+            ctx.save();
+            ctx.translate(item.x, item.y);
+            ctx.rotate(item.angle);
+            ctx.fillText(item.type, 0, 0);
+            ctx.restore();
+        });
+
+        // Draw player nets
+        Object.keys(players).forEach(key => {
+            const p = players[key];
+            if (p.active) {
+                // Outer glow
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 45, 0, Math.PI * 2);
+                ctx.strokeStyle = p.color;
+                ctx.lineWidth = 5;
+                ctx.stroke();
+                
+                // Net Mesh
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]);
+                ctx.arc(p.x, p.y, 40, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Label
+                ctx.fillStyle = 'white';
+                ctx.font = '14px bold sans-serif';
+                ctx.fillText(key.toUpperCase(), p.x, p.y - 60);
+            }
+        });
+    }
+
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+</script>
+</body>
+</html>
