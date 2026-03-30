@@ -3,41 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chroma Key Full Screen</title>
+    <title>Chroma Key - No Sleep Mode</title>
     <style>
-        /* Remove default browser spacing */
         body, html {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
-            overflow: hidden; /* Prevents scrollbars */
+            overflow: hidden;
+            background-color: #00b140; /* Chroma Green */
         }
 
-        /* The Chroma Key background */
-        .chroma-bg {
+        .canvas {
             width: 100vw;
             height: 100vh;
-            background-color: #00b140; /* Standard Green Screen Hex */
-            cursor: none; /* Hides the mouse for a clean look */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        /* Subtle indicator so you know Wake Lock is active */
+        #status {
+            color: rgba(0,0,0,0.2);
+            font-family: sans-serif;
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
 
-    <div class="chroma-bg" onclick="toggleFullScreen()"></div>
+    <div class="canvas" onclick="activateFeatures()">
+        <div id="status">Tap to prevent sleep & go full screen</div>
+    </div>
 
     <script>
-        // Function to trigger actual browser full-screen mode on click
-        function toggleFullScreen() {
+        let wakeLock = null;
+
+        async function activateFeatures() {
+            // 1. Trigger Fullscreen
             if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log("Fullscreen failed");
+                });
+            }
+
+            // 2. Request Wake Lock (Prevents Dimming)
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    document.getElementById('status').innerText = "Wake Lock Active - Screen won't dim";
+                    
+                    // Listen for when the lock is released (e.g. if user switches tabs)
+                    wakeLock.addEventListener('release', () => {
+                        console.log('Wake Lock was released');
+                    });
+                } else {
+                    document.getElementById('status').innerText = "Wake Lock not supported on this browser";
                 }
+            } catch (err) {
+                console.error(`${err.name}, ${err.message}`);
             }
         }
+
+        // Re-acquire lock if user leaves and comes back to the tab
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                wakeLock = await navigator.wakeLock.request('screen');
+            }
+        });
     </script>
 </body>
 </html>
