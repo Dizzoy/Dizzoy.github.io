@@ -1,404 +1,288 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, Wind, Droplets, Leaf, Trophy, Users, Camera, QrCode as QrIcon, RefreshCw } from 'lucide-react';
-
-/**
- * ECO-CLEAN MULTIPLAYER
- * * GitHub Compatibility Notes:
- * 1. Single-file React component.
- * 2. Dynamic QR Code generation using internal logic.
- * 3. Mobile-responsive "Controller Mode".
- * 4. Browser-based Color Tracking (Computer Vision).
- */
-
-const COLORS = [
-  { name: 'Red', hex: '#ef4444', rgb: [239, 68, 68] },
-  { name: 'Green', hex: '#22c55e', rgb: [34, 197, 94] },
-  { name: 'Blue', hex: '#3b82f6', rgb: [59, 130, 246] },
-  { name: 'Yellow', hex: '#eab308', rgb: [234, 179, 8] },
-];
-
-const TRASH_TYPES = [
-  { id: 'bottle', icon: <Trash2 size={32} />, points: 10 },
-  { id: 'oil', icon: <Droplets size={40} />, points: 20 },
-  { id: 'smog', icon: <Wind size={36} />, points: 15 },
-];
-
-const App = () => {
-  // Use URL params to determine if this instance is a controller
-  // This allows the QR code to point to: your-url.com?mode=controller
-  const [view, setView] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('mode') === 'controller' ? 'color-select' : 'landing';
-  });
-
-  const [selectedColor, setSelectedColor] = useState(null);
-  const [players, setPlayers] = useState({}); 
-  const [gameState, setGameState] = useState({
-    score: 0,
-    pollutionLevel: 100,
-    items: [],
-    gameActive: false,
-  });
-
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const requestRef = useRef();
-  const [isMobile] = useState(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
-
-  // Generate the URL for the QR code
-  const controllerUrl = `${window.location.origin}${window.location.pathname}?mode=controller`;
-
-  const handleJoinAsController = (color) => {
-    setSelectedColor(color);
-    setView('controller');
-  };
-
-  const startTracking = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "user", width: 640, height: 480 } 
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-        requestRef.current = requestAnimationFrame(processVideo);
-      }
-    } catch (err) {
-      console.error("Camera access denied. Ensure you are using HTTPS.", err);
-    }
-  };
-
-  const processVideo = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
-    
-    ctx.save();
-    ctx.scale(-1, 1); // Mirror for natural interaction
-    ctx.drawImage(videoRef.current, -canvasRef.current.width, 0, canvasRef.current.width, canvasRef.current.height);
-    ctx.restore();
-
-    const frame = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
-    const data = frame.data;
-    const newPositions = {};
-
-    COLORS.forEach((color, idx) => {
-      let sumX = 0, sumY = 0, count = 0;
-
-      // Performance optimization: Step through pixels
-      for (let i = 0; i < data.length; i += 32) { 
-        const r = data[i], g = data[i + 1], b = data[i + 2];
-        const dist = Math.sqrt(
-          Math.pow(r - color.rgb[0], 2) +
-          Math.pow(g - color.rgb[1], 2) +
-          Math.pow(b - color.rgb[2], 2)
-        );
-
-        if (dist < 75) {
-          const x = (i / 4) % canvasRef.current.width;
-          const y = Math.floor((i / 4) / canvasRef.current.width);
-          sumX += x; sumY += y; count++;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eco-Net: Global Cleanup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #0f172a; font-family: sans-serif; }
+        #game-container { position: relative; width: 100vw; height: 100vh; }
+        canvas { position: absolute; top: 0; left: 0; }
+        #video-feed { transform: scaleX(-1); display: none; }
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        .score-card { font-size: 2rem; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+        #qr-container { 
+            position: absolute; bottom: 20px; right: 20px; 
+            background: white; padding: 10px; border-radius: 8px; 
+            pointer-events: auto; text-align: center;
         }
-      }
+        .environment-bg {
+            position: absolute; width: 100%; height: 100%;
+            transition: filter 2s ease;
+            z-index: -1;
+            background-size: cover;
+            background-position: center;
+        }
+        .modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95); padding: 2rem; border-radius: 1rem;
+            z-index: 100; pointer-events: auto; text-align: center;
+        }
+    </style>
+</head>
+<body>
 
-      if (count > 15) {
-        newPositions[idx] = {
-          x: (sumX / count) / canvasRef.current.width * 100,
-          y: (sumY / count) / canvasRef.current.height * 100,
-          active: true
-        };
-      }
+<div id="game-container">
+    <video id="video-feed" autoplay playsinline></video>
+    <div id="bg-layer" class="environment-bg" style="background-image: url('https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&q=80&w=1600'); filter: grayscale(80%) sepia(20%);"></div>
+    
+    <canvas id="game-canvas"></canvas>
+    <canvas id="tracking-canvas" style="opacity: 0.3;"></canvas>
+
+    <div class="ui-layer p-8 flex justify-between items-start">
+        <div class="score-card">
+            <h1 class="text-4xl font-bold">ECO-NET COLLAB</h1>
+            <p>Pollution Removed: <span id="score-val">0</span> kg</p>
+            <p class="text-sm opacity-80">Goal: Clean the ocean to restore color!</p>
+        </div>
+        
+        <div id="qr-container">
+            <div id="qrcode"></div>
+            <p class="text-xs mt-2 text-black font-bold">SCAN TO JOIN</p>
+        </div>
+    </div>
+
+    <div id="setup-modal" class="modal">
+        <h2 class="text-2xl font-bold mb-4">Setup Your Camera</h2>
+        <p class="mb-4">Point your webcam at a clear space. Players will use their phones to control nets.</p>
+        <button id="start-btn" class="bg-green-600 text-white px-6 py-2 rounded-full font-bold">START CLEANUP</button>
+    </div>
+</div>
+
+<script>
+    const video = document.getElementById('video-feed');
+    const gameCanvas = document.getElementById('game-canvas');
+    const trackCanvas = document.getElementById('tracking-canvas');
+    const bgLayer = document.getElementById('bg-layer');
+    const scoreVal = document.getElementById('score-val');
+    const ctx = gameCanvas.getContext('2d');
+    const tCtx = trackCanvas.getContext('2d');
+
+    let score = 0;
+    let items = [];
+    let players = {
+        red: { x: 0, y: 0, active: false, color: '#ef4444', h: [340, 20] },
+        green: { x: 0, y: 0, active: false, color: '#22c55e', h: [90, 150] },
+        blue: { x: 0, y: 0, active: false, color: '#3b82f6', h: [190, 250] },
+        yellow: { x: 0, y: 0, active: false, color: '#eab308', h: [45, 75] }
+    };
+
+    const TRASH_TYPES = ['🥤', '🧴', '🛍️', '📦', '🛢️'];
+    const BOMB_TYPES = ['🐠', '🐢', '🐬']; // Don't catch these!
+
+    // Resize canvases
+    function resize() {
+        gameCanvas.width = trackCanvas.width = window.innerWidth;
+        gameCanvas.height = trackCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Generate QR Code (Points to the controller page)
+    // In a real scenario, this would be a hosted URL
+    new QRCode(document.getElementById("qrcode"), {
+        text: window.location.href.replace('index.html', 'controller.html'),
+        width: 128,
+        height: 128
     });
 
-    setPlayers(newPositions);
-    requestRef.current = requestAnimationFrame(processVideo);
-  };
+    // Start Camera
+    document.getElementById('start-btn').onclick = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+            video.srcObject = stream;
+            document.getElementById('setup-modal').style.display = 'none';
+            gameLoop();
+        } catch (err) {
+            console.error("Camera error:", err);
+            alert("Please enable camera access.");
+        }
+    };
 
-  useEffect(() => {
-    if (!gameState.gameActive) return;
+    function spawnItem() {
+        if (Math.random() < 0.05) {
+            const isTrash = Math.random() > 0.2;
+            items.push({
+                x: Math.random() * gameCanvas.width,
+                y: gameCanvas.height + 50,
+                vx: (Math.random() - 0.5) * 4,
+                vy: -Math.random() * 12 - 8,
+                type: isTrash ? TRASH_TYPES[Math.floor(Math.random() * TRASH_TYPES.length)] : BOMB_TYPES[Math.floor(Math.random() * BOMB_TYPES.length)],
+                isTrash: isTrash,
+                radius: 40,
+                angle: 0,
+                rotation: (Math.random() - 0.5) * 0.1
+            });
+        }
+    }
 
-    const interval = setInterval(() => {
-      setGameState(prev => {
-        const movedItems = prev.items.map(item => ({ ...item, y: item.y + item.speed }))
-          .filter(item => item.y < 110);
+    function processTracking() {
+        tCtx.save();
+        tCtx.scale(-1, 1);
+        tCtx.translate(-trackCanvas.width, 0);
+        tCtx.drawImage(video, 0, 0, trackCanvas.width, trackCanvas.height);
+        tCtx.restore();
 
-        if (Math.random() > 0.93 && movedItems.length < 8) {
-          const type = TRASH_TYPES[Math.floor(Math.random() * TRASH_TYPES.length)];
-          movedItems.push({
-            id: Math.random(),
-            x: Math.random() * 80 + 10,
-            y: -10,
-            speed: 0.6 + Math.random() * 1.2,
-            ...type
-          });
+        const frame = tCtx.getImageData(0, 0, trackCanvas.width, trackCanvas.height);
+        const data = frame.data;
+
+        // Reset positions
+        Object.keys(players).forEach(p => players[p].count = 0);
+        Object.keys(players).forEach(p => { players[p].sumX = 0; players[p].sumY = 0; });
+
+        for (let i = 0; i < data.length; i += 32) { // Sampling for performance
+            const r = data[i], g = data[i+1], b = data[i+2];
+            const [h, s, l] = rgbToHsl(r, g, b);
+
+            if (s > 40 && l > 20 && l < 80) {
+                for (const [key, p] of Object.entries(players)) {
+                    const match = (p.h[0] < p.h[1]) 
+                        ? (h >= p.h[0] && h <= p.h[1])
+                        : (h >= p.h[0] || h <= p.h[1]);
+                    
+                    if (match) {
+                        const x = (i / 4) % trackCanvas.width;
+                        const y = Math.floor((i / 4) / trackCanvas.width);
+                        p.sumX += x;
+                        p.sumY += y;
+                        p.count++;
+                        break;
+                    }
+                }
+            }
         }
 
-        let caughtPoints = 0;
-        const remainingItems = movedItems.filter(item => {
-          let caught = false;
-          Object.values(players).forEach(p => {
-            const d = Math.sqrt(Math.pow(p.x - item.x, 2) + Math.pow(p.y - item.y, 2));
-            if (d < 10) caught = true;
-          });
-          if (caught) caughtPoints += item.points;
-          return !caught;
+        Object.keys(players).forEach(key => {
+            const p = players[key];
+            if (p.count > 10) {
+                p.active = true;
+                const targetX = p.sumX / p.count;
+                const targetY = p.sumY / p.count;
+                p.x += (targetX - p.x) * 0.3; // Smoothing
+                p.y += (targetY - p.y) * 0.3;
+            } else {
+                p.active = false;
+            }
+        });
+    }
+
+    function rgbToHsl(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        let h, s, l = (max + min) / 2;
+        if (max === min) h = s = 0;
+        else {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            switch (max) {
+                case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                case g: h = (b - r) / d + 2; break;
+                case b: h = (r - g) / d + 4; break;
+            }
+            h /= 6;
+        }
+        return [h * 360, s * 100, l * 100];
+    }
+
+    function update() {
+        processTracking();
+        spawnItem();
+
+        for (let i = items.length - 1; i >= 0; i--) {
+            const item = items[i];
+            item.x += item.vx;
+            item.y += item.vy;
+            item.vy += 0.2; // Gravity
+            item.angle += item.rotation;
+
+            // Check Collision with players
+            for (const [key, p] of Object.entries(players)) {
+                if (p.active) {
+                    const dist = Math.hypot(item.x - p.x, item.y - p.y);
+                    if (dist < item.radius + 30) {
+                        if (item.isTrash) {
+                            score += 10;
+                            items.splice(i, 1);
+                        } else {
+                            score = Math.max(0, score - 50); // Penalty for wildlife
+                            items.splice(i, 1);
+                        }
+                        updateEnvironment();
+                        break;
+                    }
+                }
+            }
+
+            if (item.y > gameCanvas.height + 100) items.splice(i, 1);
+        }
+    }
+
+    function updateEnvironment() {
+        scoreVal.innerText = score;
+        const cleanProgress = Math.min(100, score / 10); // 1000 score = clean
+        const grayscale = 80 - (cleanProgress * 0.8);
+        const sepia = 20 - (cleanProgress * 0.2);
+        bgLayer.style.filter = `grayscale(${grayscale}%) sepia(${sepia}%)`;
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+        // Draw items
+        ctx.font = '50px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        items.forEach(item => {
+            ctx.save();
+            ctx.translate(item.x, item.y);
+            ctx.rotate(item.angle);
+            ctx.fillText(item.type, 0, 0);
+            ctx.restore();
         });
 
-        const newScore = prev.score + caughtPoints;
-        return {
-          ...prev,
-          items: remainingItems,
-          score: newScore,
-          pollutionLevel: Math.max(0, 100 - (newScore / 25))
-        };
-      });
-    }, 40);
+        // Draw player nets
+        Object.keys(players).forEach(key => {
+            const p = players[key];
+            if (p.active) {
+                // Outer glow
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 45, 0, Math.PI * 2);
+                ctx.strokeStyle = p.color;
+                ctx.lineWidth = 5;
+                ctx.stroke();
+                
+                // Net Mesh
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]);
+                ctx.arc(p.x, p.y, 40, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
 
-    return () => clearInterval(interval);
-  }, [gameState.gameActive, players]);
+                // Label
+                ctx.fillStyle = 'white';
+                ctx.font = '14px bold sans-serif';
+                ctx.fillText(key.toUpperCase(), p.x, p.y - 60);
+            }
+        });
+    }
 
-  // View: Color Selection (After scanning QR)
-  if (view === 'color-select') {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-white">
-        <Leaf className="text-emerald-400 mb-6" size={48} />
-        <h1 className="text-3xl font-bold mb-2">Join the Mission</h1>
-        <p className="text-slate-400 mb-8 text-center">Choose your net color to start cleaning.</p>
-        <div className="grid grid-cols-2 gap-4 w-full max-w-xs">
-          {COLORS.map((c, i) => (
-            <button 
-              key={i}
-              onClick={() => handleJoinAsController(c)}
-              className="aspect-square rounded-2xl flex flex-col items-center justify-center font-bold text-lg active:scale-95 transition-transform"
-              style={{ backgroundColor: c.hex }}
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // View: Active Controller (Solid Color Screen)
-  if (view === 'controller') {
-    return (
-      <div 
-        className="fixed inset-0 flex flex-col items-center justify-center text-white text-center p-6"
-        style={{ backgroundColor: selectedColor.hex }}
-      >
-        <div className="bg-black/20 backdrop-blur-md p-8 rounded-full mb-8">
-          <RefreshCw size={64} className="animate-spin-slow" />
-        </div>
-        <h1 className="text-4xl font-black mb-4 uppercase tracking-widest">{selectedColor.name}</h1>
-        <p className="text-lg font-medium opacity-80 max-w-xs">
-          Point this screen toward the main display camera to move your net.
-        </p>
-        <button 
-          onClick={() => setView('color-select')}
-          className="mt-24 px-6 py-2 border border-white/30 rounded-full text-xs uppercase tracking-widest font-bold"
-        >
-          Change Color
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-900 text-white font-sans overflow-hidden relative">
-      {/* Background Evolution */}
-      <div 
-        className="fixed inset-0 transition-all duration-1000 pointer-events-none"
-        style={{ 
-          background: `linear-gradient(to bottom, #0f172a, ${gameState.pollutionLevel > 40 ? '#334155' : '#065f46'})`,
-        }}
-      />
-      
-      {/* Smog Overlay */}
-      <div 
-        className="fixed inset-0 pointer-events-none transition-opacity duration-1000"
-        style={{ 
-          opacity: gameState.pollutionLevel / 120,
-          background: 'rgba(0,0,0,0.8)',
-          filter: 'blur(40px)'
-        }}
-      />
-
-      {view === 'landing' ? (
-        <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8 text-center max-w-6xl mx-auto">
-          <div className="mb-8 p-4 bg-emerald-500/10 rounded-full border border-emerald-500/20">
-            <Leaf className="text-emerald-400" size={48} />
-          </div>
-          <h1 className="text-7xl font-black tracking-tighter mb-4 italic">ECO CLEANUP</h1>
-          <p className="text-xl text-slate-400 max-w-2xl mb-12">
-            A cooperative environmental experience. Transform your smartphone into a controller using only light.
-          </p>
-
-          <div className="grid md:grid-cols-2 gap-8 w-full max-w-4xl">
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-10 rounded-[2.5rem] flex flex-col items-center">
-              <div className="bg-white p-4 rounded-2xl mb-6 shadow-2xl">
-                {/* Visual Placeholder for QR - In production use a real QR lib or static image */}
-                <div className="w-40 h-40 bg-slate-100 flex items-center justify-center relative overflow-hidden rounded-lg">
-                   <QrIcon size={120} className="text-slate-800" />
-                   <div className="absolute inset-0 bg-gradient-to-tr from-emerald-500/20 to-transparent" />
-                </div>
-              </div>
-              <h3 className="font-bold text-lg mb-2">1. Scan to Join</h3>
-              <p className="text-slate-400 text-sm text-center">Use your phone camera to scan and select a color.</p>
-              <div className="mt-4 px-3 py-1 bg-white/10 rounded-full text-[10px] font-mono text-emerald-400 break-all max-w-[200px]">
-                {controllerUrl}
-              </div>
-            </div>
-
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-10 rounded-[2.5rem] flex flex-col justify-center text-left">
-              <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                <Camera className="text-emerald-400" /> Station Setup
-              </h2>
-              <ul className="space-y-4 text-slate-300 mb-8">
-                <li className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-emerald-500 flex-shrink-0 flex items-center justify-center text-[10px] font-bold">1</div>
-                  Place webcam at eye level facing the players.
-                </li>
-                <li className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-emerald-500 flex-shrink-0 flex items-center justify-center text-[10px] font-bold">2</div>
-                  Players stand 3-5 feet back from the screen.
-                </li>
-                <li className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-emerald-500 flex-shrink-0 flex items-center justify-center text-[10px] font-bold">3</div>
-                  Max brightness on phone screens for best tracking.
-                </li>
-              </ul>
-              <button 
-                onClick={() => { setView('game'); startTracking(); setGameState(prev => ({...prev, gameActive: true})); }}
-                className="group relative w-full py-5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-bold text-xl transition-all overflow-hidden shadow-lg shadow-emerald-500/20"
-              >
-                <span className="relative z-10 flex items-center justify-center gap-2">
-                   LAUNCH MISSION <Users size={20} />
-                </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="relative z-10 w-full h-screen">
-          {/* Header UI */}
-          <div className="absolute top-0 left-0 w-full p-10 flex justify-between items-center pointer-events-none z-50">
-            <div className="flex gap-6">
-              <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-5 rounded-3xl flex items-center gap-4">
-                <div className="p-3 bg-yellow-400/20 rounded-2xl">
-                  <Trophy className="text-yellow-400" size={28} />
-                </div>
-                <div>
-                  <div className="text-3xl font-black leading-none">{gameState.score}</div>
-                  <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mt-1">Total Cleanup</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-5 rounded-3xl w-80">
-               <div className="flex justify-between items-end mb-2">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Environment Health</span>
-                  <span className="text-xl font-bold">{100 - gameState.pollutionLevel}%</span>
-               </div>
-               <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-emerald-400 transition-all duration-1000 shadow-[0_0_10px_rgba(52,211,153,0.5)]"
-                    style={{ width: `${100 - gameState.pollutionLevel}%` }}
-                  />
-               </div>
-            </div>
-          </div>
-
-          <video ref={videoRef} className="hidden" />
-          <canvas ref={canvasRef} className="hidden" width="640" height="480" />
-
-          {/* Falling Items */}
-          {gameState.items.map(item => (
-            <div 
-              key={item.id}
-              className="absolute transition-all duration-75 text-white"
-              style={{ left: `${item.x}%`, top: `${item.y}%`, transform: 'translate(-50%, -50%) rotate(15deg)' }}
-            >
-              <div className="p-4 bg-white/10 rounded-3xl backdrop-blur-md border border-white/20 animate-bounce-slow shadow-2xl">
-                {item.icon}
-                <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                  +{item.points}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {/* Player Cursors (Nets) */}
-          {Object.entries(players).map(([idx, player]) => (
-            <div 
-              key={idx}
-              className="absolute transition-all duration-75 ease-out z-40 pointer-events-none"
-              style={{ left: `${player.x}%`, top: `${player.y}%`, transform: 'translate(-50%, -50%)' }}
-            >
-              <div className="relative group">
-                <div 
-                  className="w-32 h-32 rounded-full border-4 flex items-center justify-center bg-white/5 relative"
-                  style={{ borderColor: COLORS[idx].hex, boxShadow: `0 0 50px ${COLORS[idx].hex}66` }}
-                >
-                  <div className="absolute inset-0 rounded-full animate-ping opacity-20" style={{ backgroundColor: COLORS[idx].hex }} />
-                  <div className="w-20 h-20 opacity-20 rounded-full border border-dashed" style={{ borderColor: COLORS[idx].hex }} />
-                </div>
-                <div 
-                  className="absolute -top-10 left-1/2 -translate-x-1/2 text-xs font-black px-4 py-1.5 rounded-full bg-black/80 border whitespace-nowrap shadow-xl"
-                  style={{ color: COLORS[idx].hex, borderColor: `${COLORS[idx].hex}44` }}
-                >
-                  PLAYER {Number(idx) + 1}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {/* End Game */}
-          {gameState.pollutionLevel <= 0 && (
-            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center p-10 text-center animate-in fade-in duration-1000">
-              <div className="p-6 bg-emerald-500 rounded-full mb-8 shadow-[0_0_100px_rgba(16,185,129,0.4)]">
-                <Leaf size={80} className="text-white" />
-              </div>
-              <h2 className="text-9xl font-black mb-4 tracking-tighter">PLANET SAVED</h2>
-              <p className="text-2xl text-slate-400 max-w-xl mb-12">Congratulations Team! You've restored the ecosystem through collective action.</p>
-              <div className="flex gap-4">
-                <button 
-                  onClick={() => window.location.href = window.location.pathname}
-                  className="px-10 py-5 bg-white text-slate-900 rounded-2xl font-black text-xl hover:scale-105 transition-transform"
-                >
-                  RESTART MISSION
-                </button>
-              </div>
-            </div>
-          )}
-          
-          {/* Debug Preview */}
-          <div className="absolute bottom-10 left-10 w-48 h-36 border-2 border-white/10 rounded-[2rem] overflow-hidden bg-black/40 backdrop-blur-lg group">
-            <video 
-              autoPlay muted playsInline
-              className="w-full h-full object-cover grayscale opacity-40 group-hover:opacity-100 transition-opacity"
-              ref={el => { if(el && videoRef.current) el.srcObject = videoRef.current.srcObject; }} 
-            />
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <Camera size={24} className="text-white/20" />
-            </div>
-            <div className="absolute bottom-2 left-0 w-full text-center text-[8px] font-bold text-white/40 uppercase tracking-widest">
-              Live Feed Tracking
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes bounce-slow {
-          0%, 100% { transform: translateY(0) rotate(15deg); }
-          50% { transform: translateY(-10px) rotate(12deg); }
-        }
-        .animate-bounce-slow { animation: bounce-slow 3s infinite ease-in-out; }
-        .animate-spin-slow { animation: spin 8s linear infinite; }
-      `}} />
-    </div>
-  );
-};
-
-export default App;
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+</script>
+</body>
+</html>
