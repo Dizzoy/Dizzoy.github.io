@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eco-Sweep: Cleanup Crew</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- OpenCV.js -->
+    <script async src="https://docs.opencv.org/4.5.4/opencv.js" type="text/javascript"></script>
+    <style>
+        body { background-color: #0f172a; overflow: hidden; color: white; font-family: sans-serif; }
+        #game-canvas { cursor: none; }
+        .player-card { transition: all 0.3s ease; border: 4px solid transparent; }
+        .player-card.active { transform: scale(1.05); }
+        .red-border { border-color: #ef4444; }
+        .blue-border { border-color: #3b82f6; }
+        .green-border { border-color: #22c55e; }
+        .yellow-border { border-color: #eab308; }
+        #video-container { position: absolute; bottom: 20px; right: 20px; width: 240px; height: 180px; border-radius: 10px; overflow: hidden; border: 2px solid #475569; }
+        #debug-canvas { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        .glass { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer" class="absolute inset-0 z-10 pointer-events-none flex flex-col items-center p-8">
+        <!-- Header -->
+        <div class="w-full flex justify-between items-start mb-4">
+            <div class="glass p-4 rounded-xl">
+                <h1 class="text-3xl font-black text-emerald-400 uppercase tracking-tighter">Eco-Sweep</h1>
+                <p class="text-xs text-slate-300">Clean the ocean together!</p>
+            </div>
+            <div id="stats" class="glass p-4 rounded-xl text-right">
+                <div class="text-4xl font-bold" id="total-score">0000</div>
+                <div class="text-xs uppercase tracking-widest text-slate-400">Total Pollution Collected</div>
+            </div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="pointer-events-auto flex flex-col items-center mt-20 max-w-2xl text-center">
+            <h2 class="text-5xl font-bold mb-6">Global Cleanup Event</h2>
+            <p class="text-xl mb-10 text-slate-300">Grab a physical object (Red, Blue, Green, or Yellow) and hold it up to your webcam. We'll use them as your cleaning nets!</p>
+            
+            <div class="grid grid-cols-4 gap-4 mb-10 w-full">
+                <div id="p1-card" class="player-card glass p-4 rounded-xl flex flex-col items-center">
+                    <div class="w-8 h-8 bg-red-500 rounded-full mb-2"></div>
+                    <span class="font-bold">RED</span>
+                    <span id="p1-status" class="text-[10px] text-slate-400">WAITING...</span>
+                </div>
+                <div id="p2-card" class="player-card glass p-4 rounded-xl flex flex-col items-center">
+                    <div class="w-8 h-8 bg-blue-500 rounded-full mb-2"></div>
+                    <span class="font-bold">BLUE</span>
+                    <span id="p2-status" class="text-[10px] text-slate-400">WAITING...</span>
+                </div>
+                <div id="p3-card" class="player-card glass p-4 rounded-xl flex flex-col items-center">
+                    <div class="w-8 h-8 bg-green-500 rounded-full mb-2"></div>
+                    <span class="font-bold">GREEN</span>
+                    <span id="p3-status" class="text-[10px] text-slate-400">WAITING...</span>
+                </div>
+                <div id="p4-card" class="player-card glass p-4 rounded-xl flex flex-col items-center">
+                    <div class="w-8 h-8 bg-yellow-500 rounded-full mb-2"></div>
+                    <span class="font-bold">YELLOW</span>
+                    <span id="p4-status" class="text-[10px] text-slate-400">WAITING...</span>
+                </div>
+            </div>
+
+            <button id="start-btn" class="bg-emerald-500 hover:bg-emerald-400 text-white font-bold py-4 px-12 rounded-full text-2xl shadow-lg transition-all">
+                START CLEANING
+            </button>
+            <p id="cv-status" class="mt-4 text-xs text-orange-400 italic">Initializing Computer Vision...</p>
+        </div>
+    </div>
+
+    <!-- Gameplay Surface -->
+    <canvas id="game-canvas" class="absolute inset-0"></canvas>
+
+    <!-- Hidden Video & CV elements -->
+    <div id="video-container">
+        <video id="webcam" playsinline style="display:none"></video>
+        <canvas id="debug-canvas"></canvas>
+    </div>
+
+    <script>
+        // Constants & Configuration
+        const COLORS = [
+            { id: 0, name: 'Red', hex: '#ef4444', hsvRange: { low: [0, 100, 100], high: [10, 255, 255] } },
+            { id: 1, name: 'Blue', hex: '#3b82f6', hsvRange: { low: [100, 150, 0], high: [140, 255, 255] } },
+            { id: 2, name: 'Green', hex: '#22c55e', hsvRange: { low: [35, 100, 100], high: [85, 255, 255] } },
+            { id: 3, name: 'Yellow', hex: '#eab308', hsvRange: { low: [20, 100, 100], high: [30, 255, 255] } }
+        ];
+
+        const TRASH_TYPES = [
+            { name: 'Plastic Bottle', emoji: '🧴', points: 10 },
+            { name: 'Soda Can', emoji: '🥫', points: 15 },
+            { name: 'Old Tire', emoji: '🛞', points: 50 },
+            { name: 'Plastic Bag', emoji: '🛍️', points: 20 },
+            { name: 'Nuclear Waste', emoji: '☢️', points: -100 }
+        ];
+
+        // State
+        let gameState = 'START';
+        let score = 0;
+        let players = COLORS.map(c => ({ ...c, x: -100, y: -100, lastX: -100, lastY: -100, isActive: false, score: 0 }));
+        let particles = [];
+        let debris = [];
+        
+        // OpenCV / Video Vars
+        let video, cap, src, hsv, dst, mask;
+        let cvReady = false;
+
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const debugCanvas = document.getElementById('debug-canvas');
+        const debugCtx = debugCanvas.getContext('2d');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Game Classes
+        class Trash {
+            constructor() {
+                this.type = TRASH_TYPES[Math.floor(Math.random() * TRASH_TYPES.length)];
+                this.x = Math.random() * (canvas.width - 100) + 50;
+                this.y = canvas.height + 50;
+                this.vx = (Math.random() - 0.5) * 6;
+                this.vy = -Math.random() * 15 - 12;
+                this.gravity = 0.25;
+                this.angle = 0;
+                this.rotation = (Math.random() - 0.5) * 0.1;
+                this.size = 50;
+                this.isSliced = false;
+            }
+
+            update() {
+                this.vy += this.gravity;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.angle += this.rotation;
+                return (this.y < canvas.height + 100);
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.font = `${this.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.type.emoji, 0, 0);
+                ctx.restore();
+            }
+
+            checkCollision(px, py, lpx, lpy) {
+                if (this.isSliced) return false;
+                
+                // Simple distance check between line and point (approximation)
+                const dist = Math.hypot(this.x - px, this.y - py);
+                if (dist < this.size * 1.2) {
+                    this.isSliced = true;
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.life = 1.0;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.02;
+                return this.life > 0;
+            }
+            draw() {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // OpenCV Integration
+        async function initCamera() {
+            video = document.getElementById('webcam');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480, frameRate: 30 } 
+                });
+                video.srcObject = stream;
+                video.play();
+                
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        debugCanvas.width = video.videoWidth;
+                        debugCanvas.height = video.videoHeight;
+                        resolve();
+                    };
+                });
+            } catch (e) {
+                alert("Camera access denied. This game requires a webcam to track your cleanup tools!");
+            }
+        }
+
+        function processFrame() {
+            if (!cvReady) return;
+
+            // Capture Frame
+            cap.read(src);
+            cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
+            cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+
+            // Track each color
+            players.forEach((player, index) => {
+                let low = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), player.hsvRange.low.concat([0]));
+                let high = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), player.hsvRange.high.concat([255]));
+                
+                cv.inRange(hsv, low, high, mask);
+                
+                // Morphology to clean noise
+                let ksize = new cv.Size(5, 5);
+                let kernel = cv.getStructuringElement(cv.MORPH_RECT, ksize);
+                cv.erode(mask, mask, kernel);
+                cv.dilate(mask, mask, kernel);
+
+                let contours = new cv.MatVector();
+                let hierarchy = new cv.Mat();
+                cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+                let maxArea = 0;
+                let bestContour = null;
+
+                for (let i = 0; i < contours.size(); ++i) {
+                    let area = cv.contourArea(contours.get(i));
+                    if (area > 500 && area > maxArea) {
+                        maxArea = area;
+                        bestContour = contours.get(i);
+                    }
+                }
+
+                if (bestContour) {
+                    let moments = cv.moments(bestContour);
+                    player.lastX = player.x;
+                    player.lastY = player.y;
+                    
+                    // Map video coordinates to canvas (Inverted X for mirror effect)
+                    let tx = (moments.m10 / moments.m00);
+                    let ty = (moments.m01 / moments.m00);
+                    
+                    player.x = canvas.width - (tx / video.videoWidth * canvas.width);
+                    player.y = (ty / video.videoHeight * canvas.height);
+                    player.isActive = true;
+
+                    // Update UI status
+                    document.getElementById(`p${index+1}-card`).classList.add('active', `${player.name.toLowerCase()}-border`);
+                    document.getElementById(`p${index+1}-status`).innerText = "READY";
+                    document.getElementById(`p${index+1}-status`).classList.remove('text-slate-400');
+                    document.getElementById(`p${index+1}-status`).classList.add('text-emerald-400');
+                } else {
+                    player.isActive = false;
+                }
+
+                contours.delete();
+                hierarchy.delete();
+                low.delete();
+                high.delete();
+                kernel.delete();
+            });
+
+            // Mirror video to debug canvas for feedback
+            debugCtx.save();
+            debugCtx.scale(-1, 1);
+            debugCtx.drawImage(video, -debugCanvas.width, 0, debugCanvas.width, debugCanvas.height);
+            debugCtx.restore();
+            
+            // Draw points on debug
+            players.forEach(p => {
+                if(p.isActive) {
+                    // Convert back to local debug coordinates
+                    let dx = (1 - p.x/canvas.width) * debugCanvas.width;
+                    let dy = (p.y/canvas.height) * debugCanvas.height;
+                    debugCtx.fillStyle = p.hex;
+                    debugCtx.beginPath();
+                    debugCtx.arc(dx, dy, 10, 0, Math.PI*2);
+                    debugCtx.fill();
+                }
+            });
+        }
+
+        // Game Loop
+        function loop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Background environment effect (gentle water)
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (cvReady) processFrame();
+
+            if (gameState === 'PLAYING') {
+                // Spawn trash
+                if (Math.random() < 0.03 + (score/5000)) {
+                    debris.push(new Trash());
+                }
+
+                // Update and Draw Debris
+                debris = debris.filter(item => {
+                    const active = item.update();
+                    item.draw();
+
+                    // Check collisions with all active players
+                    players.forEach(p => {
+                        if (p.isActive) {
+                            if (item.checkCollision(p.x, p.y, p.lastX, p.lastY)) {
+                                score += item.type.points;
+                                if (score < 0) score = 0;
+                                document.getElementById('total-score').innerText = score.toString().padStart(4, '0');
+                                
+                                // Explosion
+                                for(let i=0; i<10; i++) particles.push(new Particle(item.x, item.y, p.hex));
+                            }
+                        }
+                    });
+
+                    return active && !item.isSliced;
+                });
+            }
+
+            // Particles
+            particles = particles.filter(p => {
+                const active = p.update();
+                p.draw();
+                return active;
+            });
+
+            // Draw Player Nets/Cursors
+            players.forEach(p => {
+                if (p.isActive) {
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = p.hex;
+                    ctx.strokeStyle = p.hex;
+                    ctx.lineWidth = 8;
+                    ctx.lineCap = 'round';
+                    
+                    // Simple trail
+                    ctx.beginPath();
+                    ctx.moveTo(p.lastX, p.lastY);
+                    ctx.lineTo(p.x, p.y);
+                    ctx.stroke();
+
+                    // The "Net"
+                    ctx.fillStyle = p.hex;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 15, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            });
+
+            requestAnimationFrame(loop);
+        }
+
+        // Initialization
+        window.onload = async () => {
+            await initCamera();
+            
+            const checkCV = setInterval(() => {
+                if (typeof cv !== 'undefined' && cv.Mat) {
+                    clearInterval(checkCV);
+                    src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+                    hsv = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC3);
+                    mask = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC1);
+                    dst = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+                    cap = new cv.VideoCapture(video);
+                    cvReady = true;
+                    document.getElementById('cv-status').innerText = "System Ready. Show your colors!";
+                    document.getElementById('cv-status').className = "mt-4 text-xs text-emerald-400";
+                }
+            }, 500);
+
+            document.getElementById('start-btn').addEventListener('click', () => {
+                gameState = 'PLAYING';
+                document.getElementById('start-screen').style.display = 'none';
+            });
+
+            loop();
+        };
+    </script>
+</body>
+</html>
