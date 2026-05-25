@@ -22,7 +22,6 @@
         }
 
         * { box-sizing: border-box; }
-        /* Prevent selection/callout on game elements */
         canvas, button { -webkit-tap-highlight-color: transparent; outline: none; }
         body { -webkit-touch-callout: none; }
 
@@ -241,11 +240,11 @@
     <div class="flex items-start justify-between w-full pointer-events-auto">
         <!-- Left Controls -->
         <div class="flex gap-2">
-            <button id="btn-pause" class="glass rounded-lg flex items-center justify-center text-beige hover:text-gold transition" style="min-width:44px;min-height:44px">
+            <button id="btn-pause" class="glass rounded-lg flex items-center justify-content-center text-beige hover:text-gold transition" style="min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center">
                 <svg id="icon-pause" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 <svg id="icon-play" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             </button>
-            <button id="btn-restart" class="glass rounded-lg flex items-center justify-center text-beige hover:text-gold transition" style="min-width:44px;min-height:44px">
+            <button id="btn-restart" class="glass rounded-lg flex items-center justify-content-center text-beige hover:text-gold transition" style="min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18.2"/></svg>
             </button>
         </div>
@@ -253,7 +252,7 @@
         <!-- Center: Soul Counter -->
         <div class="flex flex-col items-center gap-1.5">
             <div class="glass px-5 py-2 rounded-full flex items-center gap-2 pulse-gold">
-                <span class="font-bold text-spirit glow-spirit serif" style="font-size:clamp(16px,5vw,24px)" id="hud-spirit-count">10</span>
+                <span class="text-xl font-bold text-spirit glow-spirit serif" id="hud-spirit-count">10</span>
                 <span class="text-xs uppercase serif tracking-widest text-gray-400">Souls</span>
             </div>
             <div class="w-48 h-1.5 rounded-full bg-black/60 overflow-hidden border border-white/5">
@@ -291,7 +290,7 @@
         <div class="p-3">
             <p class="font-bold text-sm text-white serif leading-tight" id="relic-toast-name">Victorian Black</p>
             <p class="text-xs mt-0.5" id="relic-toast-region" style="color:rgba(201,162,39,0.7)">Europe</p>
-            <p class="text-gray-300 leading-relaxed mt-1" id="relic-toast-fact" style="font-size:clamp(10px,2.5vw,13px)"></p>
+            <p class="text-xs text-gray-300 leading-relaxed mt-1" id="relic-toast-fact"></p>
             <div id="relic-toast-skill" class="hidden mt-2 px-2 py-1.5 rounded-lg text-xs font-semibold serif"
                  style="background:rgba(201,162,39,0.12);border:1px solid rgba(201,162,39,0.3);color:#c9a227"></div>
             <div class="mt-2 h-0.5 w-full rounded-full overflow-hidden" style="background:rgba(255,255,255,0.08)">
@@ -302,26 +301,10 @@
         </div>
         <p class="text-xs text-gray-600 mt-1.5 text-right">tap to dismiss</p>
     </div>
-    <!-- Mobile D-pad — only shown on touch devices -->
+    <!-- Mobile D-pad -->
     <div id="dpad" class="absolute bottom-0 left-0 right-0 pb-6 px-5 flex justify-between items-end pointer-events-none hidden">
-        <!-- LEFT -->
-        <button id="btn-L"
-            style="width:80px;height:80px;border-radius:50%;background:rgba(8,4,14,0.78);
-                   border:2px solid rgba(201,162,39,0.4);backdrop-filter:blur(8px);
-                   color:rgba(212,184,150,0.95);font-size:28px;display:flex;align-items:center;
-                   justify-content:center;pointer-events:auto;touch-action:none;user-select:none;
-                   -webkit-user-select:none;cursor:pointer;transition:background 0.1s">
-            ◀
-        </button>
-        <!-- RIGHT -->
-        <button id="btn-R"
-            style="width:80px;height:80px;border-radius:50%;background:rgba(8,4,14,0.78);
-                   border:2px solid rgba(201,162,39,0.4);backdrop-filter:blur(8px);
-                   color:rgba(212,184,150,0.95);font-size:28px;display:flex;align-items:center;
-                   justify-content:center;pointer-events:auto;touch-action:none;user-select:none;
-                   -webkit-user-select:none;cursor:pointer;transition:background 0.1s">
-            ▶
-        </button>
+        <button id="btn-L" style="width:80px;height:80px;border-radius:50%;background:rgba(8,4,14,0.78);border:2px solid rgba(201,162,39,0.4);backdrop-filter:blur(8px);color:rgba(212,184,150,0.95);font-size:28px;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none">◀</button>
+        <button id="btn-R" style="width:80px;height:80px;border-radius:50%;background:rgba(8,4,14,0.78);border:2px solid rgba(201,162,39,0.4);backdrop-filter:blur(8px);color:rgba(212,184,150,0.95);font-size:28px;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none">▶</button>
     </div>
 </div>
 
@@ -464,7 +447,7 @@ const COLOR_RELICS_DB = [
     {
         id: "victorian_black",
         skill: "IRON_VEIL",
-        skillDesc: "Gate penalties halved — Victorian stoicism absorbs loss",
+        skillDesc: "Gate penalties halved & shots deal +20% damage — Victorian iron will",
         name: "Victorian Mourning Gown",
         colorGroup: "Black",
         emoji: "⬛",
@@ -480,7 +463,7 @@ const COLOR_RELICS_DB = [
     {
         id: "thai_black_adult",
         skill: "ELDER_GRACE",
-        skillDesc: "Obstacles deal 0 damage — elders are immune to death's touch",
+        skillDesc: "Full obstacle immunity & shots deal +25% damage — elder power transcends death",
         name: "Thai Black Adult Attire",
         colorGroup: "Black",
         emoji: "⬛",
@@ -496,7 +479,7 @@ const COLOR_RELICS_DB = [
     {
         id: "roman_toga_pulla",
         skill: "CIVIC_RAGE",
-        skillDesc: "Next negative gate converts to positive — Roman protest energy",
+        skillDesc: "Negative gates flip positive & TRIPLE burst shots — Roman protest fusillade",
         name: "Roman Toga Pulla",
         colorGroup: "Black",
         emoji: "⬛",
@@ -512,7 +495,7 @@ const COLOR_RELICS_DB = [
     {
         id: "medieval_black_noble",
         skill: "NOBLE_TITHE",
-        skillDesc: "+20 bonus souls from any gain gate — nobility commands more",
+        skillDesc: "+20 bonus gate souls, +10% shot damage, bigger projectiles — noble command",
         name: "Medieval Black Livery",
         colorGroup: "Black",
         emoji: "⬛",
@@ -530,7 +513,7 @@ const COLOR_RELICS_DB = [
     {
         id: "chinese_white_mourning",
         skill: "MERIT_AURA",
-        skillDesc: "Slowly regenerate 1 soul every 2 seconds — Buddhist merit",
+        skillDesc: "Regen 1 soul/2s & shots deal +5% damage — steady Buddhist merit",
         name: "Chinese White Mourning Robes",
         colorGroup: "White",
         emoji: "⬜",
@@ -562,7 +545,7 @@ const COLOR_RELICS_DB = [
     {
         id: "malagasy_lamba",
         skill: "ANCESTOR_BOND",
-        skillDesc: "Soul count cannot drop below 5 — ancestral protection",
+        skillDesc: "Floor at 5 souls & +30% shot damage — ancestral backing",
         name: "Malagasy Lamba Silk Wrap",
         colorGroup: "White",
         emoji: "⬜",
@@ -580,7 +563,7 @@ const COLOR_RELICS_DB = [
     {
         id: "chinese_wufu_hemp",
         skill: "HEIR_DUTY",
-        skillDesc: "Gates give double effect — the heir carries full burden",
+        skillDesc: "Double gate effect & DOUBLE SHOT +25% dmg each — heir's full burden",
         name: "Wufu Hemp Sackcloth (五服)",
         colorGroup: "Hemp",
         emoji: "🟫",
@@ -596,7 +579,7 @@ const COLOR_RELICS_DB = [
     {
         id: "egyptian_linen",
         skill: "ETERNAL_GOLD",
-        skillDesc: "+30 Karma bonus at end of run — pharaoh's blessing",
+        skillDesc: "+30 Karma at rebirth & faster golden shots — pharaoh's eternal blessing",
         name: "Ancient Egyptian Burial Linen",
         colorGroup: "Hemp",
         emoji: "🟫",
@@ -614,7 +597,7 @@ const COLOR_RELICS_DB = [
     {
         id: "ghana_red_black",
         skill: "ROYAL_FEAST",
-        skillDesc: "Obstacles stun swarm but deal NO damage — celebration absorbs pain",
+        skillDesc: "Full obstacle immunity & ×1.2 dmg huge slow cannon rounds — royal feast",
         name: "Ghanaian Royal Red Canopy",
         colorGroup: "Red",
         emoji: "🟥",
@@ -803,7 +786,7 @@ class Progress {
         this.karma = 0;
         this.discovered = [];
         this.upgrades = {
-            swarmSize:   { label: 'Starting Swarm', desc: 'Begin with more wandering souls.', base: 20, step: 5, max: 5, level: 0, cost: 50 },
+            swarmSize:   { label: 'Starting Swarm', desc: 'Begin with more wandering souls.', base: 15, step: 5, max: 5, level: 0, cost: 50 },
             speed:       { label: 'Ethereal Speed',  desc: 'Move your swarm more quickly.', base: 1.0, step: 0.15, max: 5, level: 0, cost: 40 },
             relicChance: { label: 'Ancestral Call',  desc: 'More color relics appear on the path.', base: 0.75, step: 0.1, max: 4, level: 0, cost: 60 },
             protection:  { label: 'Karmic Shield',   desc: 'Reduce soul loss from obstacles.', base: 0.7, step: -0.08, max: 3, level: 0, cost: 80 }
@@ -871,32 +854,24 @@ class GameEngine {
     }
 
     initScene() {
-        // ── Device tier detection ──────────────────────────
         const ua = navigator.userAgent;
         this.isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || innerWidth < 768;
-        this.isLowEnd  = this.isMobile || (navigator.hardwareConcurrency || 8) <= 4;
-        window._MOB    = this.isMobile; // shared flag for Spirit/Reaper constructors
+        window._MOB = this.isMobile;
 
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x060308);
-        // Tighter fog on mobile = earlier culling = fewer fragments drawn
         this.scene.fog = new THREE.FogExp2(0x08040c, this.isMobile ? 0.015 : 0.007);
 
         this.cam = new THREE.PerspectiveCamera(46, innerWidth / innerHeight, 1, this.isMobile ? 700 : 1500);
         this.cam.position.set(0, 15, -22);
         this.cam.lookAt(0, 3, 20);
 
-        this.renderer = new THREE.WebGLRenderer({
-            antialias: !this.isMobile,
-            powerPreference: 'high-performance'
-        });
+        this.renderer = new THREE.WebGLRenderer({ antialias: !this.isMobile, powerPreference: 'high-performance' });
         this.renderer.setSize(innerWidth, innerHeight);
-        // Pixel ratio: mobile=1, mid=1.5, desktop=2
         this.renderer.setPixelRatio(this.isMobile ? Math.min(devicePixelRatio, 1) : Math.min(devicePixelRatio, 1.5));
-        this.renderer.shadowMap.enabled = false; // biggest single GPU win
+        this.renderer.shadowMap.enabled = false;
         this.container.appendChild(this.renderer.domElement);
 
-        // Lighting — use ambient+follow only on mobile (no directional cost)
         this.scene.add(new THREE.AmbientLight(0x1a0a14, this.isMobile ? 1.6 : 0.7));
         if (!this.isMobile) {
             const dir = new THREE.DirectionalLight(0xffd4a0, 0.5);
@@ -916,7 +891,7 @@ class GameEngine {
     buildWorld() {
         // Floor — dark soul river
         const floorGeo = new THREE.PlaneGeometry(18, this.PATH + 200, 2, 6);
-        const floorMat = new THREE.MeshBasicMaterial({ color: 0x080410 }); // no lighting calc
+        const floorMat = new THREE.MeshBasicMaterial({ color: 0x080410 });
         const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
         floor.position.set(0, 0, this.PATH / 2);
@@ -927,7 +902,6 @@ class GameEngine {
         for (let z = 80; z < this.PATH; z += lanternStep) {
             this.addLantern(-10, z); this.addLantern(10, z);
         }
-        // Background trees — fewer on mobile
         const treeCount = this.isMobile ? 16 : 55;
         for (let i = 0; i < treeCount; i++) {
             const s = Math.random() > 0.5 ? 1 : -1;
@@ -943,7 +917,7 @@ class GameEngine {
         const orb = new THREE.Mesh(new THREE.SphereGeometry(0.4, 5, 5),
             new THREE.MeshBasicMaterial({ color: 0xffa040 }));
         orb.position.y = 4.7; g.add(orb);
-        if (!this.isMobile) { // skip per-lantern lights on mobile
+        if (!this.isMobile) {
             const light = new THREE.PointLight(0xff7020, 0.5, 18);
             light.position.y = 4.7; g.add(light);
         }
@@ -978,7 +952,6 @@ class GameEngine {
             this.touchStartX = e.touches[0].clientX;
         }, { passive: true });
         addEventListener('touchend', () => { this.swipeActive = false; });
-        // Bind D-pad once DOM ready
         this._bindDpad();
     }
 
@@ -1081,16 +1054,15 @@ class GameEngine {
     randomGate(lvl, beneficial) {
         // Lower gains so the soul count grows slower and the 150 cap matters.
         const r = Math.random();
-        if (r < 0.42) return { op: '+', val: Math.floor(10 + Math.random() * 20) };    // +10 to +29
-        if (r < 0.58) return { op: '×', val: Math.random() < 0.4 ? 3 : 2 };             // ×2 or ×3
-        if (beneficial) return { op: '+', val: Math.floor(8 + Math.random() * 22) };      // +8 to +29
-        return Math.random() > 0.5 ? { op: '÷', val: 2 } : { op: '-', val: Math.floor(6 + Math.random() * 12) };
+        if (r < 0.42) return { op: '+', val: Math.floor(4 + Math.random() * 8) };      // +4 to +11
+        if (r < 0.55) return { op: '×', val: 2 };                                       // rarer ×2 only
+        if (beneficial) return { op: '+', val: Math.floor(3 + Math.random() * 10) };     // +3 to +12
+        return Math.random() > 0.5 ? { op: '÷', val: 2 } : { op: '-', val: Math.floor(5 + Math.random() * 9) };
     }
 
     loop() {
         requestAnimationFrame(() => this.loop());
-        const dt = Math.min(this.clock.getDelta(), 0.05); // cap at 50ms — no physics explosion on tab re-focus
-        // Mobile render-skip: run logic every frame, only draw every other → ~30fps GPU, 60fps game feel
+        const dt = Math.min(this.clock.getDelta(), 0.05);
         if (this.isMobile) {
             this._rs = !this._rs;
             if (this.state === 'PLAYING') this.updatePlaying(dt);
@@ -1136,7 +1108,6 @@ class GameEngine {
         }
 
         this.swarm.update(dt, this.activeRelic);
-        // Only animate relics close to swarm (skip off-screen spinning gems)
         const _sz = this.swarm ? this.swarm.z : 0;
         this.relics.forEach(r => { if (Math.abs(r.mesh.position.z - _sz) < 160) r.update(dt); });
         this.reapers.forEach(r => r.update(dt, this.swarm, this));
@@ -1216,19 +1187,19 @@ class GameEngine {
         if (!this.swarm || this.swarm.z > this.PATH - 230) return;
 
         const difficulty = Math.min(1, Math.max(0, this.progress / 100));
-        const maxReapers = 1 + Math.floor(difficulty * 4); // 1 early, up to 5 near the end
+        const maxReapers = 1 + Math.floor(difficulty * 3); // 1 early, up to 4 near the end
         this.reaperSpawnTimer -= dt;
 
         // First monster appears quickly so the player knows the gun system exists.
         const forceFirstSpawn = !this.reaperSpawnedOnce && (this.runTime > 2.0 || this.swarm.z > 35);
         const normalReaperCount = this.reapers.filter(r => !r.finalBoss).length;
         if ((this.reaperSpawnTimer <= 0 || forceFirstSpawn) && normalReaperCount < maxReapers) {
-            this.spawnReaperWave(difficulty, forceFirstSpawn ? 1 : (Math.random() < 0.28 + difficulty * 0.30 ? 2 : 1));
+            this.spawnReaperWave(difficulty, forceFirstSpawn ? 1 : (Math.random() < 0.18 + difficulty * 0.25 ? 2 : 1));
             this.reaperSpawnedOnce = true;
 
             // Spawn faster as the game goes on, but keep enough breathing room.
-            const baseInterval = 5.5 - difficulty * 3.5;
-            this.reaperSpawnTimer = Math.max(1.8, baseInterval + (Math.random() * 1.8 - 0.6));
+            const baseInterval = 6.5 - difficulty * 3.8;
+            this.reaperSpawnTimer = Math.max(2.2, baseInterval + (Math.random() * 2.2 - 0.8));
         }
     }
 
@@ -1243,14 +1214,29 @@ class GameEngine {
 
     updateSoulGun(dt) {
         if (!this.swarm || this.swarm.count <= 0) return;
+        const sk = this.activeRelic ? this.activeRelic.skill : null;
 
-        // Auto-fire all the time. More souls = faster fire rate + stronger shots.
         this.fireTimer -= dt;
         const souls = this.swarm.count;
-        const fireRate = Math.max(0.09, 0.30 - Math.min(souls, 140) * 0.00135);
+        let fireRate = Math.max(0.09, 0.30 - Math.min(souls, 140) * 0.00135);
+
+        // Skill fire-rate modifiers
+        if (sk === 'SPIRIT_GUIDE') fireRate = Math.max(0.05, fireRate * 0.5);   // ×2 rate
+        if (sk === 'CIVIC_RAGE')   fireRate = Math.max(0.04, fireRate * 0.35);  // triple burst
+        if (sk === 'HEIR_DUTY')    fireRate = Math.max(0.06, fireRate * 0.55);  // double shot
+        if (sk === 'VEIL_THIN')    fireRate = Math.max(0.03, fireRate * 0.25);  // ×4 rate
+
         if (this.fireTimer <= 0) {
             this.fireTimer = fireRate;
-            this.fireSoulPower();
+            if (sk === 'CIVIC_RAGE') {
+                this.fireSoulPower(); this.fireSoulPower(); this.fireSoulPower();
+            } else if (sk === 'HEIR_DUTY') {
+                this.fireSoulPower(); this.fireSoulPower();
+            } else if (sk === 'VEIL_THIN') {
+                this.fireSoulPower(); this.fireSoulPower(); this.fireSoulPower(); this.fireSoulPower();
+            } else {
+                this.fireSoulPower();
+            }
         }
 
         // Move bullets and remove old ones.
@@ -1289,12 +1275,30 @@ class GameEngine {
 
     fireSoulPower() {
         const souls = this.swarm.count;
-        const damage = Math.max(1, Math.floor(souls / 8));
-        const size = Math.min(0.65, 0.22 + souls * 0.0035);
-        const speed = 58 + Math.min(42, souls * 0.45);
+        const sk = this.activeRelic ? this.activeRelic.skill : null;
+
+        let baseDmg = Math.max(1, Math.floor(souls / 8));
+        let size    = Math.min(0.65, 0.22 + souls * 0.0035);
+        let speed   = 58 + Math.min(42, souls * 0.45);
         const spread = Math.min(0.9, souls * 0.006);
+
+        // ── Per-skill damage / size / speed mods (user-specified values) ──
+        if (sk === 'IRON_VEIL')     baseDmg = Math.floor(baseDmg * 1.2);   // +20%
+        if (sk === 'ELDER_GRACE')   baseDmg = Math.floor(baseDmg * 1.25);  // +25%
+        if (sk === 'NOBLE_TITHE')   { baseDmg = Math.floor(baseDmg * 1.1); size = Math.min(0.9, size * 1.4); } // +10% + bigger
+        if (sk === 'MERIT_AURA')    baseDmg = Math.floor(baseDmg * 1.05);  // +5%
+        if (sk === 'ANCESTOR_BOND') baseDmg = Math.floor(baseDmg * 1.3);   // +30%
+        if (sk === 'HEIR_DUTY')     baseDmg = Math.floor(baseDmg * 1.25);  // +25% each of 2 shots
+        if (sk === 'ETERNAL_GOLD')  { speed += 25; size = Math.min(0.85, size * 1.2); } // faster golden (×0 dmg note: treated as speed/size buff)
+        if (sk === 'ROYAL_FEAST')   { baseDmg = Math.floor(baseDmg * 1.2); size = Math.min(1.1, size * 1.8); speed *= 0.65; } // ×1.2 huge slow cannon
+        if (sk === 'BLOOD_MEMORY')  baseDmg = Math.floor(baseDmg * 1.5);   // ×1.5
+        if (sk === 'SPIRIT_GUIDE')  { speed += 28; size = Math.max(0.18, size * 0.78); } // faster lighter shots
+        if (sk === 'CIVIC_RAGE')    baseDmg = Math.floor(baseDmg * 1.05);  // slight boost per burst shot
+        if (sk === 'VEIL_THIN')     baseDmg = Math.floor(baseDmg * 0.88);  // 4 shots, slightly less each
+
+        const color = this.activeRelic ? this.activeRelic.glow3d : 0x8de8ff;
         const shotX = this.swarm.x + (Math.random() - 0.5) * spread;
-        const shot = new SoulProjectile(this.scene, shotX, this.swarm.y + 1.1, this.swarm.z + 2.4, damage, speed, size);
+        const shot  = new SoulProjectile(this.scene, shotX, this.swarm.y + 1.1, this.swarm.z + 2.4, baseDmg, speed, size, color);
         this.projectiles.push(shot);
     }
 
@@ -1533,7 +1537,6 @@ class GameEngine {
         document.getElementById('main-menu').classList.add('hidden');
         document.getElementById('hud').classList.remove('hidden');
         document.getElementById('hud').classList.add('flex');
-        // Reveal D-pad on touch devices
         if (this.isMobile || 'ontouchstart' in window) {
             const dp = document.getElementById('dpad');
             if (dp) dp.classList.remove('hidden');
@@ -1543,11 +1546,10 @@ class GameEngine {
     }
 
     _bindDpad() {
-        const press = (key, val) => { this.keys[key] = val; };
+        const press = (k, v) => { this.keys[k] = v; };
         const hi = 'rgba(201,162,39,0.28)', lo = 'rgba(8,4,14,0.78)';
         const tryBind = () => {
-            const L = document.getElementById('btn-L');
-            const R = document.getElementById('btn-R');
+            const L = document.getElementById('btn-L'), R = document.getElementById('btn-R');
             if (!L || !R) { setTimeout(tryBind, 300); return; }
             ['touchstart','pointerdown'].forEach(ev => {
                 L.addEventListener(ev, e => { e.preventDefault(); press('ArrowLeft',true);  L.style.background=hi; }, {passive:false});
@@ -1574,12 +1576,11 @@ class SpiritSwarm {
         this.setCount(count);
     }
     setCount(n) {
-        n = Math.max(0, Math.min(200, Math.round(n)));
-        this.count = n; // logical count (used for math/scoring)
-        // Render cap: mobile shows ≤25 ghosts, desktop ≤150
-        // This alone cuts draw calls by ~6× on phones
-        const renderCap = window._MOB ? 30 : 200;
-        const renderN   = Math.min(n, renderCap);
+        // Global soul cap. This keeps performance stable and prevents the player from snowballing too hard.
+        n = Math.max(0, Math.min(150, Math.round(n)));
+        this.count = n; // logical count
+        const renderCap = window._MOB ? 25 : 150;
+        const renderN = Math.min(n, renderCap);
         while (this.spirits.length < renderN) this.spirits.push(new Spirit(this.scene));
         while (this.spirits.length > renderN) { this.spirits.pop().destroy(); }
     }
@@ -1614,7 +1615,6 @@ class Spirit {
         this.scene = scene;
         this.mesh = new THREE.Group();
 
-        // Shared geometry pool — avoids uploading identical buffers per spirit
         if (!Spirit._geo) Spirit._geo = {
             body: new THREE.CylinderGeometry(0.48, 0.38, 1.2, 6),
             head: new THREE.SphereGeometry(0.48, 6, 6),
@@ -1623,7 +1623,6 @@ class Spirit {
             eyeM: new THREE.MeshBasicMaterial({ color: 0x0a0810 }),
         };
         const _g = Spirit._geo;
-
         this.mat = new THREE.MeshStandardMaterial({
             color: 0xd0eeff, transparent: true, opacity: 0.88,
             roughness: 0.15, metalness: 0.0, emissive: 0x4db8e8, emissiveIntensity: 0.4
@@ -1638,7 +1637,6 @@ class Spirit {
         const le = new THREE.Mesh(_g.eye, _g.eyeM); le.position.set(-0.15, 1.22, 0.4); this.mesh.add(le);
         const re = new THREE.Mesh(_g.eye, _g.eyeM); re.position.set(0.15, 1.22, 0.4); this.mesh.add(re);
 
-        // Tail wisps — skip on mobile to save draw calls
         this.tail = new THREE.Group();
         if (!window._MOB) {
             for (let i = 0; i < 4; i++) {
@@ -1774,9 +1772,8 @@ class Spirit {
             },
         };
 
-        this._defs = defs; // always keep defs for lazy build
+        this._defs = defs;
         if (!window._MOB) {
-            // Desktop: pre-build all 16 outfits now
             for (let id in defs) {
                 const g = defs[id]();
                 g.visible = false;
@@ -1784,7 +1781,6 @@ class Spirit {
                 this.outfits[id] = g;
             }
         }
-        // Mobile: outfits built on first use (see update())
     }
 
     update(tx, ty, tz, dt, theme) {
@@ -1794,17 +1790,13 @@ class Spirit {
         this.tail.rotation.z = Math.sin(this.mesh.position.z * 1.4) * 0.14;
 
         for (let id in this.outfits) this.outfits[id].visible = false;
-
         if (theme) {
             this.mat.color.setHex(theme.color3d);
             this.mat.emissive.setHex(theme.glow3d);
             this.mat.emissiveIntensity = 0.9;
-            // Lazy-build outfit on first encounter (mobile path)
             if (!this.outfits[theme.id] && this._defs && this._defs[theme.id]) {
                 const g = this._defs[theme.id]();
-                g.visible = false;
-                this.mesh.add(g);
-                this.outfits[theme.id] = g;
+                g.visible = false; this.mesh.add(g); this.outfits[theme.id] = g;
             }
             if (this.outfits[theme.id]) this.outfits[theme.id].visible = true;
         } else {
@@ -2217,7 +2209,7 @@ class Reaper {
         this.phase = Math.random() * Math.PI * 2; // for floating bob
         this.finalBoss = !!opts.finalBoss;
         if (this.finalBoss) this.scale += 1.15;
-        this.maxHp = opts.hp || Math.floor(18 + difficulty * 65 + Math.random() * (12 + difficulty * 28));
+        this.maxHp = opts.hp || Math.floor(28 + difficulty * 105 + Math.random() * (18 + difficulty * 45));
         if (this.finalBoss) this.maxHp = Math.max(this.maxHp, 190);
         this.hp = this.maxHp;
         this.hitRadius = (this.finalBoss ? 2.2 : 1.5) * this.scale;
@@ -2406,7 +2398,7 @@ class Reaper {
 // Damage scales with current soul count.
 // ═══════════════════════════════════════════════════════════════════
 class SoulProjectile {
-    constructor(scene, x, y, z, damage, speed, size) {
+    constructor(scene, x, y, z, damage, speed, size, color = 0x8de8ff) {
         this.scene = scene;
         this.damage = damage;
         this.speed = speed;
@@ -2416,7 +2408,7 @@ class SoulProjectile {
         const g = new THREE.Group();
         const core = new THREE.Mesh(
             new THREE.SphereGeometry(size, 10, 10),
-            new THREE.MeshBasicMaterial({ color: 0x8de8ff, transparent: true, opacity: 0.95 })
+            new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.95 })
         );
         g.add(core);
         const halo = new THREE.Mesh(
@@ -2426,7 +2418,7 @@ class SoulProjectile {
         g.add(halo);
         const trail = new THREE.Mesh(
             new THREE.ConeGeometry(size * 0.65, size * 3.2, 8),
-            new THREE.MeshBasicMaterial({ color: 0x8de8ff, transparent: true, opacity: 0.32 })
+            new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.32 })
         );
         trail.rotation.x = Math.PI / 2;
         trail.position.z = -size * 2.2;
