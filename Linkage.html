@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4-Bar Linkage Simulator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { color: #2c3e50; margin-bottom: 5px; }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            max-width: 1100px;
+            width: 100%;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .card {
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .canvas-container {
+            flex: 1;
+            min-width: 400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        .control-panel {
+            flex: 1;
+            min-width: 350px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #34495e;
+        }
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+        .value-display {
+            float: right;
+            color: #2980b9;
+            font-weight: bold;
+        }
+        .info-box {
+            margin-top: 20px;
+            background: #eef2f3;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .info-box h3 { margin-top: 0; color: #2c3e50; }
+        .status {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-top: 10px;
+        }
+        .status.valid { background: #d4edda; color: #155724; }
+        .status.invalid { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+
+    <h1>4-Bar Linkage Interactive Simulator</h1>
+    <p>เว็บจำลองกลไกข้อต่อ 4 ชิ้น พร้อมปรับแต่งค่าและดูผลลัพธ์แบบเรียลไทม์</p>
+
+    <div class="container">
+        <div class="card canvas-container">
+            <canvas id="simCanvas" width="400" height="400"></canvas>
+            <div id="mechanismStatus" class="status valid">สถานะ: ทำงานปกติ</div>
+        </div>
+
+        <div class="card control-panel">
+            <h3>ปรับแต่งค่าพารามิเตอร์</h3>
+            
+            <div class="control-group">
+                <label>มุมแขนขับ ($\theta_2$): <span id="val_theta2" class="value-display">45°</span></label>
+                <input type="range" id="theta2" min="0" max="360" value="45">
+            </div>
+
+            <div class="control-group">
+                <label>โครงสร้าง ($r_1 - \text{Ground}$): <span id="val_r1" class="value-display">150 px</span></label>
+                <input type="range" id="r1" min="80" max="250" value="150">
+            </div>
+
+            <div class="control-group">
+                <label>แขนขับ ($r_2 - \text{Crank}$): <span id="val_r2" class="value-display">60 px</span></label>
+                <input type="range" id="r2" min="20" max="120" value="60">
+            </div>
+
+            <div class="control-group">
+                <label>ก้านเชื่อม ($r_3 - \text{Coupler}$): <span id="val_r3" class="value-display">140 px</span></label>
+                <input type="range" id="r3" min="50" max="250" value="140">
+            </div>
+
+            <div class="control-group">
+                <label>แขนตาม ($r_4 - \text{Output}$): <span id="val_r4" class="value-display">120 px</span></label>
+                <input type="range" id="r4" min="50" max="250" value="120">
+            </div>
+
+            <div class="info-box">
+                <h3>คำอธิบายค่าต่างๆ</h3>
+                <ul>
+                    <li><b>$r_1$ (Ground):</b> ระยะห่างระหว่างจุดหมุนคงที่ทั้งสองด้านบนโครงสร้าง</li>
+                    <li><b>$r_2$ (Crank):</b> แขนรับแรงขับเคลื่อนหลัก (Input) ทำหน้าที่หมุนรอบจุดกำเนิด</li>
+                    <li><b>$r_3$ (Coupler):</b> ก้านเชื่อมตรงกลาง ทำหน้าที่ถ่ายทอดการเคลื่อนที่ไปยังแขนปลายทาง</li>
+                    <li><b>$r_4$ (Output):</b> แขนตามหรือก้านแกว่ง (Rocker) ที่รับการเคลื่อนที่จากก้านเชื่อม</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // ดึงค่าจาก DOM Elements
+    const inputTheta2 = document.getElementById('theta2');
+    const inputR1 = document.getElementById('r1');
+    const inputR2 = document.getElementById('r2');
+    const inputR3 = document.getElementById('r3');
+    const inputR4 = document.getElementById('r4');
+
+    function draw() {
+        // อ่านค่าปัจจุบัน
+        let theta2_deg = parseFloat(inputTheta2.value);
+        let r1 = parseFloat(inputR1.value);
+        let r2 = parseFloat(inputR2.value);
+        let r3 = parseFloat(inputR3.value);
+        let r4 = parseFloat(inputR4.value);
+
+        // อัปเดตตัวเลขแสดงผลบนหน้าจอ
+        document.getElementById('val_theta2').innerText = theta2_deg + '°';
+        document.getElementById('val_r1').innerText = r1 + ' px';
+        document.getElementById('val_r2').innerText = r2 + ' px';
+        document.getElementById('val_r3').innerText = r3 + ' px';
+        document.getElementById('val_r4').innerText = r4 + ' px';
+
+        // ล้างจอภาพแคนวาส
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // กำหนดจุดอ้างอิง O2 (จุดหมุนซ้าย) ให้อยู่กลางค่อนไปทางซ้ายล่าง
+        let O2 = { x: 80, y: 300 };
+        let O4 = { x: O2.x + r1, y: O2.y };
+
+        // คำนวณพิกัดจุด A (ปลายแขน Crank r2)
+        let theta2 = theta2_deg * Math.PI / 180;
+        let A = {
+            x: O2.x + r2 * Math.cos(theta2),
+            y: O2.y - r2 * Math.sin(theta2) // พิกัด Y ใน Canvas กลับด้านบนล่าง
+        };
+
+        // คำนวณหาตำแหน่ง B (ปลายแขน Output r4) ด้วยวิธีวงตัดวงกลม (Intersection of two circles)
+        let dx = O4.x - A.x;
+        let dy = O4.y - A.y;
+        let d = Math.sqrt(dx * dx + dy * dy);
+
+        let statusDiv = document.getElementById('mechanismStatus');
+
+        // เช็คเงื่อนไขความเป็นไปได้ทางเรขาคณิต
+        if (d > (r3 + r4) || d < Math.abs(r3 - r4) || d === 0) {
+            statusDiv.className = 'status invalid';
+            statusDiv.innerText = 'สถานะ: ประกอบชิ้นส่วนไม่ได้ (เกินระยะเอื้อม)';
+            
+            // วาดโครงสร้างเท่าที่วาดได้เพื่อไม่ให้จอโล่ง
+            drawLink(O2, A, '#e74c3c', 'O2', 'A');
+            drawFixedBase(O2, O4);
+            return;
+        }
+
+        statusDiv.className = 'status valid';
+        statusDiv.innerText = 'สถานะ: ทำงานปกติ (เชื่อมต่อสมบูรณ์)';
+
+        let a = (r3 * r3 - r4 * r4 + d * d) / (2 * d);
+        let h = Math.sqrt(Math.max(0, r3 * r3 - a * a));
+
+        let x2 = A.x + (a * dx) / d;
+        let y2 = A.y + (a * dy) / d;
+
+        // เลือกคำตอบชุดแรก (Open Circuit)
+        let B = {
+            x: x2 + (h * dy) / d,
+            y: y2 - (h * dx) / d
+        };
+
+        // วาดชิ้นส่วนทั้งหมดลงบนแคนวาส
+        drawFixedBase(O2, O4);
+        drawLink(O2, A, '#3498db', 'O2 (Fixed)', 'A');     // r2 (Crank)
+        drawLink(A, B, '#2ecc71', 'A', 'B');               // r3 (Coupler)
+        drawLink(O4, B, '#e67e22', 'O4 (Fixed)', 'B');     // r4 (Output)
+    }
+
+    function drawLink(p1, p2, color, label1, label2) {
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // วาดจุดข้อต่อ
+        drawJoint(p1.x, p1.y, '#333');
+        drawJoint(p2.x, p2.y, '#333');
+    }
+
+    function drawJoint(x, y, color) {
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.fill();
+    }
+
+    function drawFixedBase(O2, O4) {
+        // เส้นโครงสร้างพื้นฐาน r1
+        ctx.beginPath();
+        ctx.moveTo(O2.x, O2.y);
+        ctx.lineTo(O4.x, O4.y);
+        ctx.strokeStyle = '#7f8c8d';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]); // รีเซ็ตเส้นประ
+    }
+
+    // ผูก Event Listener ให้ทุกตัวควบคุมอัปเดตภาพทันทีเมื่อเลื่อน
+    [inputTheta2, inputR1, inputR2, inputR3, inputR4].forEach(input => {
+        input.addEventListener('input', draw);
+    });
+
+    // วาดครั้งแรกตอนเปิดหน้าเว็บ
+    draw();
+</script>
+
+</body>
+</html>
