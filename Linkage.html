@@ -66,6 +66,23 @@
             color: #2980b9;
             font-weight: bold;
         }
+        .btn-anim {
+            width: 100%;
+            padding: 10px;
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: background 0.2s;
+        }
+        .btn-anim:hover { background-color: #219653; }
+        .btn-anim.stop { background-color: #c0392b; }
+        .btn-anim.stop:hover { background-color: #a93226; }
+
         .info-box {
             margin-top: 20px;
             background: #eef2f3;
@@ -89,7 +106,7 @@
 <body>
 
     <h1>4-Bar Linkage Interactive Simulator</h1>
-    <p>เว็บจำลองกลไกข้อต่อ 4 ชิ้น พร้อมปรับแต่งค่าและดูผลลัพธ์แบบเรียลไทม์</p>
+    <p>เว็บจำลองกลไกข้อต่อ 4 ชิ้น พร้อมระบบเล่นแอนิเมชันอัตโนมัติ</p>
 
     <div class="container">
         <!-- ส่วนแสดงผลแอนิเมชัน -->
@@ -102,6 +119,8 @@
         <div class="card control-panel">
             <h3>ปรับแต่งค่าพารามิเตอร์</h3>
             
+            <button id="btnPlay" class="btn-anim">▶ เล่นแอนิเมชัน</button>
+
             <div class="control-group">
                 <label>มุมแขนขับ (&theta;₂): <span id="val_theta2" class="value-display">45°</span></label>
                 <input type="range" id="theta2" min="0" max="360" value="45">
@@ -148,6 +167,10 @@
     const inputR2 = document.getElementById('r2');
     const inputR3 = document.getElementById('r3');
     const inputR4 = document.getElementById('r4');
+    const btnPlay = document.getElementById('btnPlay');
+
+    let isAnimating = false;
+    let animationId = null;
 
     function draw() {
         let theta2_deg = parseFloat(inputTheta2.value);
@@ -156,7 +179,7 @@
         let r3 = parseFloat(inputR3.value);
         let r4 = parseFloat(inputR4.value);
 
-        document.getElementById('val_theta2').innerText = theta2_deg + '°';
+        document.getElementById('val_theta2').innerText = Math.round(theta2_deg) + '°';
         document.getElementById('val_r1').innerText = r1 + ' px';
         document.getElementById('val_r2').innerText = r2 + ' px';
         document.getElementById('val_r3').innerText = r3 + ' px';
@@ -238,8 +261,44 @@
         ctx.setLineDash([]);
     }
 
+    // ฟังก์ชันรันแอนิเมชันวนลูป
+    function animate() {
+        let currentVal = parseFloat(inputTheta2.value);
+        currentVal = (currentVal + 1) % 360; // เพิ่มมุมทีละ 1 องศา วนไปจนถึง 360
+        inputTheta2.value = currentVal;
+        draw();
+        
+        if (isAnimating) {
+            animationId = requestAnimationFrame(animate);
+        }
+    }
+
+    // ควบคุมการกดปุ่ม Play/Stop
+    btnPlay.addEventListener('click', () => {
+        isAnimating = !isAnimating;
+        if (isAnimating) {
+            btnPlay.innerText = '⏸ หยุดแอนิเมชัน';
+            btnPlay.className = 'btn-anim stop';
+            animate();
+        } else {
+            btnPlay.innerText = '▶ เล่นแอนิเมชัน';
+            btnPlay.className = 'btn-anim';
+            cancelAnimationFrame(animationId);
+        }
+    });
+
+    // อัปเดตภาพทันทีเมื่อเลื่อน Slider เอง
     [inputTheta2, inputR1, inputR2, inputR3, inputR4].forEach(input => {
-        input.addEventListener('input', draw);
+        input.addEventListener('input', () => {
+            if (isAnimating) {
+                // ถ้ากำลังเล่นอยู่แล้วไปเลื่อนสไลเดอร์ ให้หยุดชั่วคราวเพื่อความเสถียร
+                isAnimating = false;
+                btnPlay.innerText = '▶ เล่นแอนิเมชัน';
+                btnPlay.className = 'btn-anim';
+                cancelAnimationFrame(animationId);
+            }
+            draw();
+        });
     });
 
     draw();
